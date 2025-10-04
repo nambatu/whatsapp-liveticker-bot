@@ -107,7 +107,8 @@ const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        executablePath: '/usr/bin/chromium-browser'
     }
 });
 
@@ -283,4 +284,5 @@ process.on('SIGINT', async () => {
     saveSeenTickers();
     if (client) await client.destroy();
     process.exit(0);
+
 });
