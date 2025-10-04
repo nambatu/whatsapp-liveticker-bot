@@ -26,8 +26,6 @@ You can reach me here:
 
     Email: julianlangschwert@gmail.com
 
-    GitHub: [Your GitHub Profile Link Here]
-
 This is a personal project, so please be patient. I'm happy to help!
 
 ⚙️ Setup Instructions (The DIY Way)
