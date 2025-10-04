@@ -1,9 +1,3 @@
-Of course. I've restructured the README to move the "easy way" section to the top and added explicit directory information for every command to make it crystal clear where to run them.
-
-Here is the revised `README.md`.
-
------
-
 # WhatsApp Live Ticker Bot ⚽
 
 A simple and powerful WhatsApp bot that provides real-time game updates from a [liga.nu](https://www.google.com/search?q=http://liga.nu) live ticker directly into your WhatsApp groups. Perfect for keeping your team or friends updated when they can't watch the game\!
