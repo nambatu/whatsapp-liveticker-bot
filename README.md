@@ -51,17 +51,17 @@ If you prefer to host the bot yourself, follow these steps to get it running on 
 
     ```bash
     # Run from your home directory (or wherever you want to store the project)
-    git clone <your-github-repository-url>
+    git clone https://github.com/nambatu/whatsapp-liveticker-bot.git
 
     # Now, move into the newly created folder
-    cd whatsapp-ticker # Or your project's folder name
+    cd whatsapp-liveticker-bot  # Or however you named your project folde
     ```
 
 2.  **Install Dependencies**
     This command reads the `package.json` file and installs the necessary libraries for the project.
 
     ```bash
-    # Run from INSIDE the project folder (e.g., ~/whatsapp-ticker)
+    # Run from INSIDE the project folder (e.g., ~/whatsapp-liveticker-bot)
     npm install
     ```
 
@@ -119,17 +119,13 @@ If you prefer to host the bot yourself, follow these steps to get it running on 
 
 Using the bot is simple. All commands must be sent in a WhatsApp group where the bot has been added.
 
-### How Team Names (Home & Guest) Work
-
-You **do not** need to set the team names manually\! The process is completely automatic. When you use the `!start` command, the bot contacts the liga.nu server, which provides the official names for the **Home** and **Guest** teams. The bot saves these names and uses them in all messages for that game.
-
 ### Finding the Ticker URL
 
 1.  Open the live ticker page in your computer's browser.
 2.  Open the **Developer Tools** (usually by pressing `F12`).
 3.  Go to the **"Network"** tab.
 4.  Filter the requests by typing `meeting`.
-5.  Copy the URL that appears. It will look something like this: `https://hbde-live.liga.nu/nuScoreLiveRestBackend/api/1/meeting/123456/time/1728054069`.
+5.  Copy the URL that appears. It will look something like this: `https://hbde-live.liga.nu/nuScoreLiveRestBackend/api/1/meeting/123456/time/1728054069`. Make sure that `/time/012345679` is part of the URL.
 
 ### Starting & Stopping the Ticker
 
