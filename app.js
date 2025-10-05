@@ -107,7 +107,7 @@ const client = new Client({
     puppeteer: {
         headless: true,
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
-        executablePath: '/usr/bin/chromium-browser'
+        executablePath: '/usr/bin/chromium'
     }
 });
 
@@ -282,3 +282,4 @@ process.on('SIGINT', async () => {
     process.exit(0);
 
 });
+
