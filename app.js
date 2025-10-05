@@ -247,7 +247,7 @@ async function startPolling(meetingPageUrl, chatId) {
     tickerState.intervalId = setInterval(pollForUpdates, 60000); // Poll every 60 seconds
 }
 
-function processEvents(data, chatId) {
+async function processEvents(data, chatId) {
     const tickerState = activeTickers.get(chatId);
     if (!data || !Array.isArray(data.events)) return false;
     
@@ -258,7 +258,7 @@ function processEvents(data, chatId) {
         if (tickerState.seen.has(ev.idx)) continue;
         const msg = formatEvent(ev, tickerState);
         console.log(`[${chatId}] Sende neues Event:`, msg);
-        if (msg) client.sendMessage(chatId, msg);
+        if (msg) await client.sendMessage(chatId, msg);
         tickerState.seen.add(ev.idx);
         newEventsAdded = true;
         if (ev.event === 16) {
