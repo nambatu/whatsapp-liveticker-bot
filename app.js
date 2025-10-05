@@ -3,11 +3,10 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const qrcode = require('qrcode-terminal');
+const puppeteer = require('puppeteer'); // <-- IMPORTANT: puppeteer is imported here
 const { Client, LocalAuth } = require('whatsapp-web.js');
 
 // --- ZENTRALE VERWALTUNG FÜR ALLE AKTIVEN TICKER ---
-// Anstelle von globalen Variablen nutzen wir eine Map.
-// Der Key ist die Chat-ID, der Wert ist das State-Objekt des Tickers.
 const activeTickers = new Map();
 
 // --- KONFIGURATION & PERSISTENZ ---
@@ -31,15 +30,12 @@ const EVENT_MAP = {
     17: { label: "Teamaufstellung", emoji: "👥" }
 };
 
-// --- DATEN-PERSISTENZ (für mehrere Ticker angepasst) ---
+// --- DATEN-PERSISTENZ ---
 function loadSeenTickers() {
     try {
         const raw = fs.readFileSync(SEEN_FILE, 'utf8');
         const data = JSON.parse(raw);
         for (const [chatId, seenArray] of Object.entries(data)) {
-            // Wir erstellen keinen Ticker, sondern merken uns nur die 'seen' Events
-            // für den Fall, dass ein Ticker nach einem Neustart wieder gestartet wird.
-            // Die eigentliche Ticker-Logik startet erst mit !start.
             if (!activeTickers.has(chatId)) {
                 activeTickers.set(chatId, { seen: new Set(seenArray) });
             }
@@ -64,7 +60,7 @@ function saveSeenTickers() {
     }
 }
 
-// --- HILFSFUNKTIONEN (angepasst, um `teamNames` zu übergeben) ---
+// --- HILFSFUNKTIONEN ---
 function teamName(isHomeTeam, teamNames) {
     return isHomeTeam ? teamNames.home : teamNames.guest;
 }
@@ -75,10 +71,13 @@ function formatTimeFromSeconds(sec) {
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-// Nimmt jetzt den Ticker-State (inkl. teamNames) als Argument
 function formatEvent(ev, tickerState) {
     const eventInfo = EVENT_MAP[ev.event] || { label: `Unbekanntes Event ${ev.event}`, emoji: "📢" };
-    const team = teamName(ev.teamHome, tickerState.teamNames);
+    // Gracefully handle cases where teamNames might not be set yet
+    const homeTeamName = tickerState.teamNames ? tickerState.teamNames.home : 'Heim';
+    const guestTeamName = tickerState.teamNames ? tickerState.teamNames.guest : 'Gast';
+    const team = teamName(ev.teamHome, {home: homeTeamName, guest: guestTeamName});
+    
     const score = `${ev.pointsHome}:${ev.pointsGuest}`;
     const player = (ev.personFirstname || '') + (ev.personLastname ? ` ${ev.personLastname}` : '');
     const time = ev.second ? ` (${formatTimeFromSeconds(ev.second)})` : '';
@@ -88,8 +87,8 @@ function formatEvent(ev, tickerState) {
         case 4: return `${eventInfo.emoji} Tor für ${team}${formattedPlayer} - Stand: ${score}${time}`;
         case 5: return `${eventInfo.emoji} 7-Meter Tor für ${team}${formattedPlayer} - Stand: ${score}${time}`;
         case 6: return `${eventInfo.emoji} 7-Meter Fehlwurf (${team}) - Stand: ${score}${time}`;
-        case 2: return `${eventInfo.emoji} ${eventInfo.label} ${tickerState.teamNames.home}${time}`;
-        case 3: return `${eventInfo.emoji} ${eventInfo.label} ${tickerState.teamNames.guest}${time}`;
+        case 2: return `${eventInfo.emoji} ${eventInfo.label} ${homeTeamName}${time}`;
+        case 3: return `${eventInfo.emoji} ${eventInfo.label} ${guestTeamName}${time}`;
         case 8:
         case 7:
         case 9: return `${eventInfo.emoji} ${eventInfo.label} für ${team}${formattedPlayer}${time}`;
@@ -102,13 +101,13 @@ function formatEvent(ev, tickerState) {
     }
 }
 
-// --- WHATSAPP CLIENT INITIALISIERUNG (unverändert) ---
+// --- WHATSAPP CLIENT INITIALISIERUNG ---
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-        executablePath: '/usr/bin/chromium'
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        // We don't need executablePath here, as the separate Puppeteer launch will handle it
     }
 });
 
@@ -119,19 +118,18 @@ client.on('qr', qr => {
 
 client.on('ready', () => {
     console.log('WhatsApp-Client ist bereit!');
-    loadSeenTickers(); // Lade alte Daten, wenn der Client bereit ist
+    loadSeenTickers();
 });
 
 client.on('disconnected', (reason) => {
     console.log('Client getrennt:', reason);
-    // Alle Intervalle stoppen, wenn die Verbindung abbricht
     activeTickers.forEach(ticker => {
         if (ticker.intervalId) clearInterval(ticker.intervalId);
     });
-    saveSeenTickers(); // Daten sichern
+    saveSeenTickers();
 });
 
-// --- NACHRICHTEN-LISTENER (stark überarbeitet) ---
+// --- NACHRICHTEN-LISTENER ---
 client.on('message', async msg => {
     if (!msg.body.startsWith('!')) return;
 
@@ -149,29 +147,14 @@ client.on('message', async msg => {
             await msg.reply('In dieser Gruppe läuft bereits ein Live-Ticker. Stoppen Sie ihn zuerst mit `!stop`.');
             return;
         }
-
-        const fullApiUrl = args[1];
-        const apiRegex = /api\/1\/meeting\/(\d+)\/time\/(\d+)/;
-        const apiMatch = fullApiUrl.match(apiRegex);
-
-        if (!apiMatch || apiMatch.length < 3) {
-            await msg.reply('Fehler: Die URL scheint kein gültiger API-Link zu sein.');
-            return;
-        }
-
-        const meetingId = apiMatch[1];
-        const timestamp = apiMatch[2];
-
-        await msg.reply(`Ticker wird für diese Gruppe gestartet...`);
-        startPolling(meetingId, timestamp, chatId);
+        const meetingPageUrl = args[1];
+        startPolling(meetingPageUrl, chatId);
 
     } else if (command === '!stop') {
         const tickerState = activeTickers.get(chatId);
         if (tickerState && tickerState.isPolling) {
             clearInterval(tickerState.intervalId);
             tickerState.isPolling = false;
-            // Wir löschen den Ticker nicht komplett aus der Map, um die `seen` Daten zu behalten.
-            // Alternativ könnte man hier auch `activeTickers.delete(chatId);` aufrufen.
             await client.sendMessage(chatId, 'Live-Ticker in dieser Gruppe gestoppt.');
             console.log(`Live-Ticker für Gruppe ${chat.name} (${chatId}) gestoppt.`);
             saveSeenTickers();
@@ -179,100 +162,113 @@ client.on('message', async msg => {
             await msg.reply('In dieser Gruppe läuft derzeit kein Live-Ticker.');
         }
     } else if (command === '!start') {
-        await msg.reply(`Fehler: Bitte geben Sie eine gültige URL an. Format:\n\n!start <vollständige-live-ticker-URL>`);
+        await msg.reply(`Fehler: Bitte geben Sie eine gültige URL an. Format:\n\n!start <URL-zur-Live-Ticker-Webseite>`);
     }
 });
 
 client.initialize();
 
-// --- POLLING-FUNKTIONEN (angepasst, um mit der `activeTickers`-Map zu arbeiten) ---
-async function startPolling(meetingId, timestamp, chatId) {
-    // Hole den State für diesen Chat oder erstelle einen neuen.
-    const tickerState = activeTickers.get(chatId) || { seen: new Set() };
-    tickerState.isPolling = true;
-    tickerState.meetingId = meetingId;
-    activeTickers.set(chatId, tickerState);
-
-    try {
-        const teamsUrl = `https://hbde-live.liga.nu/nuScoreLiveRestBackend/api/1/meeting/${meetingId}/time/${timestamp}`;
-        const res = await axios.get(teamsUrl, { timeout: 10000 });
-
-        if (res.data && res.data.teamHome && res.data.teamGuest && res.data.versionUid) {
-            tickerState.teamNames = { home: res.data.teamHome, guest: res.data.teamGuest };
-            tickerState.versionUid = res.data.versionUid;
-            
-            console.log(`Teamnamen für Chat ${chatId} geladen: ${tickerState.teamNames.home} vs ${tickerState.teamNames.guest}`);
-            await client.sendMessage(chatId, `*${tickerState.teamNames.home}* vs. *${tickerState.teamNames.guest}* - Live-Ticker gestartet!`);
-
-            // Starte das Polling für genau diesen Ticker
-            doPoll(chatId); // Sofortiger erster Check
-            tickerState.intervalId = setInterval(() => doPoll(chatId), 10000); // z.B. alle 10 Sekunden
-            activeTickers.set(chatId, tickerState);
-        } else {
-            throw new Error('Konnten Teamnamen oder Version-UID nicht abrufen.');
-        }
-    } catch (err) {
-        console.error(`[${chatId}] Fehler beim Starten des Tickers:`, err.message);
-        await client.sendMessage(chatId, `Fehler beim Starten des Tickers. Überprüfen Sie die URL. Polling gestoppt.`);
-        activeTickers.delete(chatId); // Ticker entfernen, da er nicht gestartet werden konnte
-    }
-}
-
-async function doPoll(chatId) {
-    const tickerState = activeTickers.get(chatId);
-    if (!tickerState || !tickerState.isPolling) {
-        // Falls Ticker zwischenzeitlich gestoppt wurde
-        if (tickerState && tickerState.intervalId) clearInterval(tickerState.intervalId);
+// --- POLLING LOGIC (Version 5 - Headless Browser Automation) ---
+async function startPolling(meetingPageUrl, chatId) {
+    const urlRegex = /https:\/\/hbde-live\.liga\.nu\/nuScoreLive\/#\/groups\/\d+\/meetings\/\d+/;
+    if (!urlRegex.test(meetingPageUrl)) {
+        await client.sendMessage(chatId, 'Fehler: Die angegebene URL ist keine gültige Live-Ticker-Seiten-URL.');
         return;
     }
 
-    let newEventsAdded = false;
-    try {
-        const apiUrl = `https://hbde-live.liga.nu/nuScoreLiveRestBackend/api/1/events/${tickerState.meetingId}/versions/${tickerState.versionUid}`;
-        const res = await axios.get(apiUrl, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; LiveTickerBot/1.0)' },
-            timeout: 5000
-        });
+    const tickerState = activeTickers.get(chatId) || { seen: new Set() };
+    tickerState.isPolling = true;
+    activeTickers.set(chatId, tickerState);
 
-        if (!res.data || !Array.isArray(res.data.events)) {
-            console.warn(`[${chatId}] Unerwartete API-Antwort.`);
+    await client.sendMessage(chatId, `Live-Ticker wird für diese Gruppe gestartet... Teamnamen werden in Kürze abgerufen.`);
+
+    const pollForUpdates = async () => {
+        if (!activeTickers.get(chatId)?.isPolling) {
+            if (tickerState.intervalId) clearInterval(tickerState.intervalId);
             return;
         }
 
-        const events = res.data.events.slice().sort((a, b) => a.idx - b.idx);
+        console.log(`[${chatId}] Starte Polling-Zyklus: Automatisiere Browser...`);
+        let browser = null;
+        try {
+            browser = await puppeteer.launch({
+                executablePath: '/usr/bin/chromium',
+                args: ['--no-sandbox', '--disable-setuid-sandbox']
+            });
+            const page = await browser.newPage();
+            await page.setRequestInterception(true);
 
-        for (const ev of events) {
-            if (tickerState.seen.has(ev.idx)) continue;
+            const apiCallPromise = new Promise((resolve, reject) => {
+                page.on('request', (request) => {
+                    if (request.url().includes('/nuScoreLiveRestBackend/api/1/meeting/')) {
+                        console.log(`[${chatId}] Gültige API-URL abgefangen: ${request.url()}`);
+                        resolve(request.url());
+                    }
+                    request.continue();
+                });
+                setTimeout(() => reject(new Error('API-Request wurde nicht innerhalb von 20 Sekunden abgefangen.')), 20000);
+            });
 
-            const msg = formatEvent(ev, tickerState);
-            console.log(`[${chatId}] Neues Event:`, msg);
+            await page.goto(meetingPageUrl, { waitUntil: 'networkidle0' });
+            const capturedUrl = await apiCallPromise;
+            await browser.close();
+            browser = null;
 
-            if (msg) {
-                await client.sendMessage(chatId, msg);
+            const meetingApiRegex = /api\/1\/meeting\/(\d+)\/time\/(\d+)/;
+            const apiMatch = capturedUrl.match(meetingApiRegex);
+            const meetingId = apiMatch[1];
+
+            const metaRes = await axios.get(capturedUrl);
+            if (!tickerState.teamNames && metaRes.data.teamHome) {
+                tickerState.teamNames = { home: metaRes.data.teamHome, guest: metaRes.data.teamGuest };
+                await client.sendMessage(chatId, `*${tickerState.teamNames.home}* vs. *${tickerState.teamNames.guest}* - Ticker aktiv!`);
             }
+            
+            const versionUid = metaRes.data.versionUid;
 
-            tickerState.seen.add(ev.idx);
-            newEventsAdded = true;
-
-            // Spielende-Event beendet den Ticker für diese Gruppe
-            if (ev.event === 16) {
-                console.log(`[${chatId}] Spielende-Event empfangen. Ticker für diese Gruppe wird gestoppt.`);
-                clearInterval(tickerState.intervalId);
-                tickerState.isPolling = false;
-                break; // Schleife beenden
+            if (versionUid && versionUid !== tickerState.lastVersionUid) {
+                console.log(`[${chatId}] Neue Version erkannt: ${versionUid}`);
+                tickerState.lastVersionUid = versionUid;
+                
+                const eventsUrl = `https://hbde-live.liga.nu/nuScoreLiveRestBackend/api/1/events/${meetingId}/versions/${versionUid}`;
+                const eventsRes = await axios.get(eventsUrl);
+                
+                if (processEvents(eventsRes.data, chatId)) {
+                    saveSeenTickers();
+                }
             }
+        } catch (error) {
+            console.error(`[${chatId}] Fehler im Polling-Zyklus:`, error.message);
+            if (browser) await browser.close();
         }
+    };
 
-        if (newEventsAdded) {
-            saveSeenTickers();
+    pollForUpdates();
+    tickerState.intervalId = setInterval(pollForUpdates, 60000); // Poll every 60 seconds
+}
+
+function processEvents(data, chatId) {
+    const tickerState = activeTickers.get(chatId);
+    if (!data || !Array.isArray(data.events)) return false;
+    
+    let newEventsAdded = false;
+    const events = data.events.slice().sort((a, b) => a.idx - b.idx);
+
+    for (const ev of events) {
+        if (tickerState.seen.has(ev.idx)) continue;
+        const msg = formatEvent(ev, tickerState);
+        console.log(`[${chatId}] Sende neues Event:`, msg);
+        if (msg) client.sendMessage(chatId, msg);
+        tickerState.seen.add(ev.idx);
+        newEventsAdded = true;
+        if (ev.event === 16) {
+            console.log(`[${chatId}] Spielende-Event empfangen. Ticker für diese Gruppe wird gestoppt.`);
+            clearInterval(tickerState.intervalId);
+            tickerState.isPolling = false;
+            break;
         }
-    } catch (err) {
-        console.error(`[${chatId}] Fehler beim Abrufen der API:`, err.message);
-        // Stoppt nur den fehlerhaften Ticker, nicht den ganzen Bot
-        clearInterval(tickerState.intervalId);
-        tickerState.isPolling = false;
-        await client.sendMessage(chatId, 'Ein Fehler ist beim Abrufen der Live-Daten aufgetreten. Der Ticker für diese Gruppe wurde gestoppt.');
     }
+    return newEventsAdded;
 }
 
 // --- APP BEENDEN (SIGINT) ---
@@ -284,6 +280,4 @@ process.on('SIGINT', async () => {
     saveSeenTickers();
     if (client) await client.destroy();
     process.exit(0);
-
 });
-
