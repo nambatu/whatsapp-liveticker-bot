@@ -233,7 +233,7 @@ async function startPolling(meetingPageUrl, chatId) {
                 const eventsUrl = `https://hbde-live.liga.nu/nuScoreLiveRestBackend/api/1/events/${meetingId}/versions/${versionUid}`;
                 const eventsRes = await axios.get(eventsUrl);
                 
-                if (processEvents(eventsRes.data, chatId)) {
+                if (await processEvents(eventsRes.data, chatId)) {
                     saveSeenTickers();
                 }
             }
@@ -258,7 +258,10 @@ async function processEvents(data, chatId) {
         if (tickerState.seen.has(ev.idx)) continue;
         const msg = formatEvent(ev, tickerState);
         console.log(`[${chatId}] Sende neues Event:`, msg);
-        if (msg) await client.sendMessage(chatId, msg);
+        if (msg) {
+            await client.sendMessage(chatId, msg);
+        }
+
         tickerState.seen.add(ev.idx);
         newEventsAdded = true;
         if (ev.event === 16) {
