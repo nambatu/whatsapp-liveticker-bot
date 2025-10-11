@@ -107,7 +107,12 @@ const client = new Client({
     puppeteer: {
         headless: true,
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
-        executablePath: '/usr/bin/chromium'
+        executablePath: '/usr/bin/chromium' // Keep this for Raspberry Pi
+    },
+    // ADD THIS NEW OPTION FOR STABILITY
+    webVersionCache: {
+      type: 'remote',
+      remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
     }
 });
 
@@ -285,4 +290,5 @@ process.on('SIGINT', async () => {
     process.exit(0);
 
 });
+
 
