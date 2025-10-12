@@ -267,4 +267,9 @@ client.initialize();
 
 // --- APP SHUTDOWN ---
 process.on('SIGINT', async () => {
-    console.log
+    console.log('(SIGINT) Empfangen. Bot wird heruntergefahren...');
+    activeTickers.forEach(ticker => { if (ticker.intervalId) clearInterval(ticker.intervalId); });
+    saveSeenTickers();
+    if (client) await client.destroy();
+    process.exit(0);
+});
