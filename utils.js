@@ -43,37 +43,47 @@ function formatTimeFromSeconds(sec) {
 
 function formatEvent(ev, tickerState) {
     const eventInfo = EVENT_MAP[ev.event] || { label: `Unbekanntes Event ${ev.event}`, emoji: "📢" };
+    // Volle Teamnamen verwenden
     const homeTeamName = tickerState.teamNames ? tickerState.teamNames.home : 'Heim';
     const guestTeamName = tickerState.teamNames ? tickerState.teamNames.guest : 'Gast';
+    
     const team = ev.teamHome ? homeTeamName : guestTeamName;
     const scoreLine = `${homeTeamName}  *${ev.pointsHome}:${ev.pointsGuest}* ${guestTeamName}`;
     const player = (ev.personFirstname || '') + (ev.personLastname ? ` ${ev.personLastname}` : '');
-    const time = ev.second ? ` (${formatTimeFromSeconds(ev.second)})` : '';
-    const formattedPlayer = player.trim() ? ` durch ${player.trim()}` : '';
+    const time = ev.second ? formatTimeFromSeconds(ev.second) : '';
+    const formattedPlayer = player.trim() ? `  |  ${player.trim()}` : '';
 
     switch (ev.event) {
         case 4: // Tor
         case 5: // 7-Meter Tor
-            return `${scoreLine}\n${eventInfo.emoji} 7-Meter Tor für *${team}*${formattedPlayer}${time}`;
+            return `         --- SCORE-UPDATE ---\n           ${scoreLine}\n\n     ${eventInfo.emoji} Tor (${time})${formattedPlayer}`;
+        
         case 6: // 7-Meter Fehlwurf
-             return `${scoreLine}\n${eventInfo.emoji} 7-Meter Fehlwurf von *${team}*${time}`;
+             return `         --- AKTION ---\n        ${scoreLine}\n\n     ${eventInfo.emoji} 7m-Fehlwurf (${time})${formattedPlayer}`;
+
         case 2: // Timeout Heim
         case 3: // Timeout Gast
-            return `${scoreLine}\n${eventInfo.emoji} Timeout für *${team}*`;
+            return `         --- AKTION ---\n        ${scoreLine}\n\n     ${eventInfo.emoji} Timeout ${team} (${time})`;
+
         case 7: // Rote Karte
         case 8: // Zeitstrafe
         case 9: // Gelbe Karte
-            const playerForCard = player.trim() ? ` (${player.trim()})` : '';
-            return `${scoreLine}\n${eventInfo.emoji} ${eventInfo.label} für *${team}*${playerForCard}`;
+            return `         --- AKTION ---\n        ${scoreLine}\n\n     ${eventInfo.emoji} ${eventInfo.label} (${time})${formattedPlayer}`;
+
         case 14: // Halbzeit
-            return `⏸️ *Halbzeit*\n${homeTeamName}  *${ev.pointsHome}:${ev.pointsGuest}* ${guestTeamName}`;
+            const halftimeScoreLine = `${homeTeamName}  *${ev.pointsHome}:${ev.pointsGuest}* ${guestTeamName}`;
+            return `     ⏸️ *HALBZEIT* ⏸️\n\n     ${halftimeScoreLine}`;
+
         case 16: // Spielende
-            return `🏁 *Spielende*\n${homeTeamName}  *${ev.pointsHome}:${ev.pointsGuest}* ${guestTeamName}`;
+             const finalScoreLine = `${homeTeamName}  *${ev.pointsHome}:${ev.pointsGuest}* ${guestTeamName}`;
+            return `     🏁 *SPIELENDE* 🏁\n\n     ${finalScoreLine}`;
+        
         case 15: // Spielbeginn
-             return `▶️ *Das Spiel hat begonnen!*`;
+             return `▶️ *Spielbeginn!*\n*${homeTeamName}* vs *${guestTeamName}*`;
+
         case 0: case 1: case 17: return ``;
         default:
-            return `${scoreLine}\n${eventInfo.emoji} ${eventInfo.label}`;
+            return `${eventInfo.emoji} ${eventInfo.label} | ${scoreLine}`;
     }
 }
 
