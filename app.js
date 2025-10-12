@@ -231,7 +231,7 @@ async function startPolling(meetingPageUrl, chatId) {
     };
 
     pollForUpdates();
-    tickerState.intervalId = setInterval(pollForUpdates, 60000); // Poll every 60 seconds
+    tickerState.intervalId = setInterval(pollForUpdates, 15000); // Poll every 15 seconds
 }
 
 async function processEvents(data, tickerState, chatId) {
