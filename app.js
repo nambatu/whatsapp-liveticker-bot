@@ -153,8 +153,15 @@ client.on('message', async msg => {
             return;
         }
         const meetingPageUrl = args[1];
-        startPolling(meetingPageUrl, chatId);
-
+        try {
+            startPolling(meetingPageUrl, chatId);
+        } catch (error) {
+            console.error(`[${chatId}] Kritischer Fehler beim Starten des Tickers:`, error);
+            await msg.reply('Ein kritischer Fehler ist aufgetreten und der Ticker konnte nicht gestartet werden.');
+            // Clean up the failed ticker state
+            activeTickers.delete(chatId);
+        }
+        
     } else if (command === '!stop') {
         const tickerState = activeTickers.get(chatId);
         if (tickerState && tickerState.isPolling) {
@@ -174,6 +181,7 @@ client.on('message', async msg => {
 client.initialize();
 
 // --- POLLING LOGIC (Version 5 - Headless Browser Automation) ---
+// Replace your entire startPolling function with this one
 async function startPolling(meetingPageUrl, chatId) {
     const urlRegex = /https:\/\/hbde-live\.liga\.nu\/nuScoreLive\/#\/groups\/\d+\/meetings\/\d+/;
     if (!urlRegex.test(meetingPageUrl)) {
@@ -211,7 +219,7 @@ async function startPolling(meetingPageUrl, chatId) {
                     }
                     request.continue();
                 });
-                setTimeout(() => reject(new Error('API-Request wurde nicht innerhalb von 20 Sekunden abgefangen.')), 20000);
+                setTimeout(() => reject(new Error('API-Request wurde nicht innerhalb von 20 Sekunden abgefangen.')), 25000);
             });
 
             await page.goto(meetingPageUrl, { waitUntil: 'networkidle0' });
@@ -238,7 +246,8 @@ async function startPolling(meetingPageUrl, chatId) {
                 const eventsUrl = `https://hbde-live.liga.nu/nuScoreLiveRestBackend/api/1/events/${meetingId}/versions/${versionUid}`;
                 const eventsRes = await axios.get(eventsUrl);
                 
-                if (await processEvents(eventsRes.data, chatId)) {
+                // Pass the tickerState object directly
+                if (await processEvents(eventsRes.data, tickerState, chatId)) {
                     saveSeenTickers();
                 }
             }
@@ -249,28 +258,32 @@ async function startPolling(meetingPageUrl, chatId) {
     };
 
     pollForUpdates();
-    tickerState.intervalId = setInterval(pollForUpdates, 60000); // Poll every 60 seconds
+    tickerState.intervalId = setInterval(pollForUpdates, 60000);
 }
 
-async function processEvents(data, chatId) {
-    const tickerState = activeTickers.get(chatId);
+// Replace your entire processEvents function with this more efficient version
+async function processEvents(data, tickerState, chatId) { // <-- Accepts chatId directly
     if (!data || !Array.isArray(data.events)) return false;
-    
+
     let newEventsAdded = false;
     const events = data.events.slice().sort((a, b) => a.idx - b.idx);
 
     for (const ev of events) {
-        if (tickerState.seen.has(ev.idx)) continue;
+        if (tickerState.seen.has(ev.idx)) {
+            continue;
+        }
+
         const msg = formatEvent(ev, tickerState);
-        console.log(`[${chatId}] Sende neues Event:`, msg);
+        console.log(`[${chatId}] Sende neues Event:`, msg); // <-- Use chatId directly
         if (msg) {
-            await client.sendMessage(chatId, msg);
+            await client.sendMessage(chatId, msg); // <-- Use chatId directly
         }
 
         tickerState.seen.add(ev.idx);
         newEventsAdded = true;
+
         if (ev.event === 16) {
-            console.log(`[${chatId}] Spielende-Event empfangen. Ticker für diese Gruppe wird gestoppt.`);
+            console.log(`[${chatId}] Spielende-Event empfangen. Ticker wird gestoppt.`); // <-- Use chatId directly
             clearInterval(tickerState.intervalId);
             tickerState.isPolling = false;
             break;
