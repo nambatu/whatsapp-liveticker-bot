@@ -1,4 +1,5 @@
 // app.js - Main File
+require('dotenv').config(); // Loads the .env file
 const qrcode = require('qrcode-terminal');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const { loadSeenTickers, saveSeenTickers } = require('./utils.js');

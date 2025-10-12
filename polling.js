@@ -1,6 +1,7 @@
 // polling.js
 const axios = require('axios');
 const puppeteer = require('puppeteer');
+const { generateGameSummary } = require('./ai.js');
 const { saveSeenTickers, formatEvent } = require('./utils.js');
 
 // This function receives the global state from app.js when it's initialized
@@ -110,18 +111,34 @@ async function processEvents(data, tickerState, chatId) {
     if (!data || !Array.isArray(data.events)) return false;
     let newEventsAdded = false;
     const events = data.events.slice().sort((a, b) => a.idx - b.idx);
+
     for (const ev of events) {
         if (tickerState.seen.has(ev.idx)) continue;
+        
         const msg = formatEvent(ev, tickerState);
         console.log(`[${chatId}] Sende neues Event:`, msg);
         if (msg) await client.sendMessage(chatId, msg);
+        
         tickerState.seen.add(ev.idx);
         newEventsAdded = true;
-        if (ev.event === 16) {
+
+        if (ev.event === 16) { // Game End Event
             console.log(`[${chatId}] Spielende-Event empfangen. Ticker wird gestoppt.`);
             tickerState.isPolling = false;
             const index = jobQueue.findIndex(job => job.chatId === chatId);
             if (index > -1) jobQueue.splice(index, 1);
+            
+            // --- NEW AI SUMMARY LOGIC ---
+            try {
+                const summary = await generateGameSummary(events, tickerState.teamNames);
+                if (summary) {
+                    await client.sendMessage(chatId, summary);
+                }
+            } catch (e) {
+                console.error(`[${chatId}] Fehler beim Senden der AI-Zusammenfassung:`, e);
+            }
+            // --- END OF NEW LOGIC ---
+
             console.log(`[${chatId}] Automatische Bereinigung in 1 Stunde geplant.`);
             setTimeout(() => {
                 if (activeTickers.has(chatId)) {
