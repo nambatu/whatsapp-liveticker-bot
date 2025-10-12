@@ -119,7 +119,6 @@ client.on('message', async msg => {
         }
         const meetingPageUrl = args[1];
         try {
-            // Added await here to properly catch errors from startPolling
             await startPolling(meetingPageUrl, chatId);
         } catch (error) {
             console.error(`[${chatId}] Kritischer Fehler beim Starten des Tickers:`, error);
@@ -136,6 +135,19 @@ client.on('message', async msg => {
             saveSeenTickers();
         } else {
             await msg.reply('In dieser Gruppe läuft derzeit kein Live-Ticker.');
+        }
+    } else if (command === '!reset') {
+        if (activeTickers.has(chatId)) {
+            const tickerState = activeTickers.get(chatId);
+            if(tickerState.isPolling) {
+                clearInterval(tickerState.intervalId); // Stop polling if it's somehow still active
+            }
+            activeTickers.delete(chatId);
+            saveSeenTickers();
+            await msg.reply('Alle Ticker-Daten für diese Gruppe wurden zurückgesetzt. Sie können jetzt einen neuen Ticker starten.');
+            console.log(`Ticker-Daten für Gruppe ${chat.name} (${chatId}) wurden manuell zurückgesetzt.`);
+        } else {
+            await msg.reply('Für diese Gruppe gibt es keine gespeicherten Ticker-Daten zum Zurücksetzen.');
         }
     } else if (command === '!start') {
         await msg.reply(`Fehler: Bitte geben Sie eine gültige URL an. Format:\n\n!start <URL-zur-Live-Ticker-Webseite>`);
@@ -248,10 +260,22 @@ async function processEvents(data, tickerState, chatId) {
         }
         tickerState.seen.add(ev.idx);
         newEventsAdded = true;
+
         if (ev.event === 16) {
             console.log(`[${chatId}] Spielende-Event empfangen. Ticker wird gestoppt.`);
             clearInterval(tickerState.intervalId);
             tickerState.isPolling = false;
+
+            // **AUTOMATIC CLEANUP LOGIC**
+            console.log(`[${chatId}] Automatische Bereinigung der Ticker-Daten in 1 Stunde geplant.`);
+            setTimeout(() => {
+                if (activeTickers.has(chatId)) {
+                    activeTickers.delete(chatId);
+                    saveSeenTickers();
+                    console.log(`[${chatId}] Ticker-Daten wurden automatisch bereinigt.`);
+                }
+            }, 3600000); // 3,600,000 milliseconds = 1 hour
+
             break;
         }
     }
@@ -273,3 +297,4 @@ process.on('SIGINT', async () => {
     if (client) await client.destroy();
     process.exit(0);
 });
+
