@@ -1,4 +1,4 @@
-// app.js - Final Version with Master Scheduler
+// app.js - Final Cleaned Version
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
@@ -101,7 +101,7 @@ client.on('disconnected', (reason) => {
     saveSeenTickers();
 });
 
-// --- MESSAGE LISTENER (UPDATED FOR SMART QUEUE) ---
+// --- MESSAGE LISTENER ---
 client.on('message', async msg => {
     if (!msg.body.startsWith('!')) return;
     const chat = await msg.getChat();
@@ -130,19 +130,16 @@ client.on('message', async msg => {
         const tickerState = activeTickers.get(chatId);
         if (tickerState && tickerState.isPolling) {
             tickerState.isPolling = false;
-            // Remove any pending jobs for this game from the queue
             const index = jobQueue.findIndex(job => job.chatId === chatId);
             if (index > -1) jobQueue.splice(index, 1);
-
             await client.sendMessage(chatId, 'Live-Ticker in dieser Gruppe gestoppt.');
             console.log(`Live-Ticker für Gruppe ${chat.name} (${chatId}) gestoppt.`);
         } else {
             await msg.reply('In dieser Gruppe läuft derzeit kein Live-Ticker.');
         }
     } else if (command === '!reset') {
-        // Stop the ticker if it's running and remove any pending jobs
         const tickerState = activeTickers.get(chatId);
-        if (tickerState && tickerState.isPolling) {
+        if (tickerState) {
             tickerState.isPolling = false;
             const index = jobQueue.findIndex(job => job.chatId === chatId);
             if (index > -1) jobQueue.splice(index, 1);
@@ -156,14 +153,13 @@ client.on('message', async msg => {
     }
 });
 
-// --- POLLING LOGIC (MASTER SCHEDULER & SMART QUEUE) ---
+// --- POLLING LOGIC ---
 function masterScheduler() {
     const tickers = Array.from(activeTickers.values()).filter(t => t.isPolling);
     if (tickers.length === 0) return;
 
     lastPolledIndex = (lastPolledIndex + 1) % tickers.length;
     const tickerStateToPoll = tickers[lastPolledIndex];
-    
     const chatId = [...activeTickers.entries()].find(([key, val]) => val === tickerStateToPoll)?.[0];
 
     if (chatId && !jobQueue.some(job => job.chatId === chatId)) {
@@ -186,95 +182,24 @@ async function startPolling(meetingPageUrl, chatId) {
 
     await client.sendMessage(chatId, `Live-Ticker wird für diese Gruppe gestartet...`);
 
-    // Immediately add the first job to get a fast initial update
     if (!jobQueue.some(job => job.chatId === chatId)) {
         jobQueue.unshift({ chatId, meetingPageUrl: tickerState.meetingPageUrl, tickerState });
     }
 }
 
 async function runQueueWorker() {
-    if (isWorkerRunning || jobQueue.length === 0) {
-        return;
-    }
+    if (isWorkerRunning || jobQueue.length === 0) return;
+    
     isWorkerRunning = true;
-
     const job = jobQueue.shift();
     const { chatId, meetingPageUrl, tickerState } = job;
-    
-    // Create a unique label for the timer
     const timerLabel = `[${chatId}] Job Execution Time`;
-
-    // START the timer
     console.time(timerLabel);
 
     if (!tickerState.isPolling) {
         console.log(`[${chatId}] Job wird übersprungen, da der Ticker gestoppt wurde.`);
         isWorkerRunning = false;
-        console.timeEnd(timerLabel); // Stop the timer even if the job is skipped
-        return;
-    }
-    
-    console.log(`[${chatId}] Worker startet Job. Verbleibende Jobs: ${jobQueue.length}`);
-    let browser = null;
-    try {
-        browser = await puppeteer.launch({ executablePath: '/usr/bin/chromium', args: ['--no-sandbox', '--disable-setuid-sandbox'] });
-        const page = await browser.newPage();
-        await page.setRequestInterception(true);
-
-        const apiCallPromise = new Promise((resolve, reject) => {
-            page.on('request', request => {
-                if (request.url().includes('/nuScoreLiveRestBackend/api/1/meeting/')) {
-                    resolve(request.url());
-                }
-                request.continue();
-            });
-            setTimeout(() => reject(new Error('API-Request wurde nicht innerhalb von 30s abgefangen.')), 30000);
-        });
-
-        await page.goto(meetingPageUrl, { waitUntil: 'networkidle0', timeout: 45000 });
-        const capturedUrl = await apiCallPromise;
-        await browser.close();
-        browser = null;
-
-        const meetingApiRegex = /api\/1\/meeting\/(\d+)\/time\/(\d+)/;
-        const apiMatch = capturedUrl.match(meetingApiRegex);
-        const meetingId = apiMatch[1];
-
-        const metaRes = await axios.get(capturedUrl);
-        if (!tickerState.teamNames && metaRes.data.teamHome) {
-            tickerState.teamNames = { home: metaRes.data.teamHome, guest: metaRes.data.teamGuest };
-            await client.sendMessage(chatId, `*${tickerState.teamNames.home}* vs. *${tickerState.teamNames.guest}* - Ticker aktiv!`);
-        }
-        
-        const versionUid = metaRes.data.versionUid;
-        if (versionUid && versionUid !== tickerState.lastVersionUid) {
-            console.log(`[${chatId}] Neue Version erkannt: ${versionUid}`);
-            tickerState.lastVersionUid = versionUid;
-            
-            const eventsUrl = `https:\/\/hbde-live.liga.nu/nuScoreLiveRestBackend/api/1/events/${meetingId}/versions/${versionUid}`;
-            const eventsRes = await axios.get(eventsUrl);
-            
-            if (await processEvents(eventsRes.data, tickerState, chatId)) {
-                saveSeenTickers();
-            }
-        }
-    } catch (error) {
-        console.error(`[${chatId}] Fehler im Worker-Job:`, error.message);
-        if (browser) await browser.close();
-    } finally {
-        isWorkerRunning = false;
-        // STOP the timer and log the duration
         console.timeEnd(timerLabel);
-    }
-}    if (isWorkerRunning || jobQueue.length === 0) return;
-    
-    isWorkerRunning = true;
-    const job = jobQueue.shift();
-    const { chatId, meetingPageUrl, tickerState } = job;
-
-    if (!tickerState.isPolling) {
-        console.log(`[${chatId}] Job wird übersprungen, da der Ticker gestoppt wurde.`);
-        isWorkerRunning = false;
         return;
     }
     
@@ -325,6 +250,7 @@ async function runQueueWorker() {
         if (browser) await browser.close();
     } finally {
         isWorkerRunning = false;
+        console.timeEnd(timerLabel);
     }
 }
 
@@ -364,19 +290,13 @@ async function processEvents(data, tickerState, chatId) {
 }
 
 // --- MAIN EXECUTION ---
-// The Master Scheduler determines the GLOBAL polling rate
-// 20000ms = 1 job every 20 seconds.
 setInterval(masterScheduler, 20000); 
-
-// The Queue Worker processes jobs as fast as it can, one by one
 setInterval(runQueueWorker, 1000); 
-
 client.initialize();
 
 // --- APP SHUTDOWN ---
 process.on('SIGINT', async () => {
     console.log('(SIGINT) Empfangen. Bot wird heruntergefahren...');
-    // Mark all tickers as stopped to prevent new jobs from being added
     activeTickers.forEach(ticker => { ticker.isPolling = false; });
     saveSeenTickers();
     if (client) await client.destroy();
