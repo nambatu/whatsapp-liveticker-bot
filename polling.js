@@ -125,4 +125,20 @@ async function processEvents(data, tickerState, chatId) {
             console.log(`[${chatId}] Automatische Bereinigung in 1 Stunde geplant.`);
             setTimeout(() => {
                 if (activeTickers.has(chatId)) {
-                    activeTickers.delete
+                    activeTickers.delete(chatId);
+                    saveSeenTickers(activeTickers);
+                    console.log(`[${chatId}] Ticker-Daten automatisch bereinigt.`);
+                }
+            }, 3600000);
+            break;
+        }
+    }
+    return newEventsAdded;
+}
+
+module.exports = {
+    initializePolling,
+    masterScheduler,
+    dispatcherLoop,
+    startPolling
+};
