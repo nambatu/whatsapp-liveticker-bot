@@ -54,7 +54,7 @@ function formatEvent(ev, tickerState) {
     switch (ev.event) {
         case 4: // Tor
         case 5: // 7-Meter Tor
-            return `${scoreLine}\n${eventInfo.emoji} Tor für *${team}*${formattedPlayer}${time}`;
+            return `${scoreLine}\n${eventInfo.emoji} 7-Meter Tor für *${team}*${formattedPlayer}${time}`;
         case 6: // 7-Meter Fehlwurf
              return `${scoreLine}\n${eventInfo.emoji} 7-Meter Fehlwurf von *${team}*${time}`;
         case 2: // Timeout Heim

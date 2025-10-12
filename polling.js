@@ -128,7 +128,7 @@ async function processEvents(data, tickerState, chatId) {
             const index = jobQueue.findIndex(job => job.chatId === chatId);
             if (index > -1) jobQueue.splice(index, 1);
             
-            // --- NEW AI SUMMARY LOGIC ---
+            // --- AI SUMMARY LOGIC ---
             try {
                 const summary = await generateGameSummary(events, tickerState.teamNames);
                 if (summary) {
@@ -137,8 +137,14 @@ async function processEvents(data, tickerState, chatId) {
             } catch (e) {
                 console.error(`[${chatId}] Fehler beim Senden der AI-Zusammenfassung:`, e);
             }
-            // --- END OF NEW LOGIC ---
+            
+            // --- NEU: Letzte Nachricht mit Links ---
+            setTimeout(async () => {
+                const finalMessage = "Vielen Dank fürs Mitfiebern! 🥳\n\nDen Quellcode für diesen Bot könnt ihr hier einsehen:\nhttps://github.com/nambatu/whatsapp-liveticker-bot/\n\nFalls ihr mich unterstützen wollt, könnt ihr das gerne hier tun:\npaypal.me/julianlangschwert";
+                await client.sendMessage(chatId, finalMessage);
+            }, 2000); // 2-second delay
 
+            // --- Automatic Cleanup Logic ---
             console.log(`[${chatId}] Automatische Bereinigung in 1 Stunde geplant.`);
             setTimeout(() => {
                 if (activeTickers.has(chatId)) {
@@ -146,7 +152,7 @@ async function processEvents(data, tickerState, chatId) {
                     saveSeenTickers(activeTickers);
                     console.log(`[${chatId}] Ticker-Daten automatisch bereinigt.`);
                 }
-            }, 3600000);
+            }, 3600000); // 1 hour
             break;
         }
     }
