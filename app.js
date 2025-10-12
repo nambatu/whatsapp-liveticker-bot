@@ -179,7 +179,7 @@ async function startPolling(meetingPageUrl, chatId) {
     };
 
     addJobToQueue();
-    tickerState.intervalId = setInterval(addJobToQueue, 60000); // Add a job every 60 seconds
+    tickerState.intervalId = setInterval(addJobToQueue, 5000); // Add a job every 60 seconds
 }
 
 async function runQueueWorker() {
@@ -297,4 +297,5 @@ process.on('SIGINT', async () => {
     if (client) await client.destroy();
     process.exit(0);
 });
+
 
