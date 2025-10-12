@@ -1,83 +1,12 @@
-// app.js - Final Cleaned Version
-const fs = require('fs');
-const path = require('path');
-const axios = require('axios');
+// app.js - Main File
 const qrcode = require('qrcode-terminal');
-const puppeteer = require('puppeteer');
 const { Client, LocalAuth } = require('whatsapp-web.js');
+const { loadSeenTickers, saveSeenTickers } = require('./utils.js');
+const { initializePolling, masterScheduler, dispatcherLoop, startPolling } = require('./polling.js');
 
 // --- GLOBAL STATE ---
 const activeTickers = new Map();
-const SEEN_FILE = path.resolve(__dirname, 'seen_tickers.json');
 const jobQueue = [];
-let isWorkerRunning = false;
-let lastPolledIndex = -1; // For the Master Scheduler
-
-// --- EVENT MAPPING ---
-const EVENT_MAP = {
-    0: { label: "Spiel geht weiter", emoji: "🔁" }, 1: { label: "Spiel unterbrochen", emoji: "⏳" },
-    2: { label: "Timeout", emoji: "⏳" }, 3: { label: "Timeout", emoji: "⏳" },
-    4: { label: "Tor", emoji: "⚽" }, 5: { label: "7-Meter Tor", emoji: "🎯" },
-    6: { label: "7-Meter Fehlwurf", emoji: "❌" }, 7: { label: "Rote Karte", emoji: "🟥" },
-    8: { label: "Zeitstrafe", emoji: "⛔" }, 9: { label: "Gelbe Karte", emoji: "🟨" },
-    14: { label: "Abpfiff (Halbzeit oder Spielende)", emoji: "⏸️" }, 15: { label: "Spielbeginn", emoji: "▶️" },
-    16: { label: "Spielende", emoji: "🏁" }, 17: { label: "Teamaufstellung", emoji: "👥" }
-};
-
-// --- DATA PERSISTENCE ---
-function loadSeenTickers() {
-    try {
-        const raw = fs.readFileSync(SEEN_FILE, 'utf8');
-        const data = JSON.parse(raw);
-        for (const [chatId, seenArray] of Object.entries(data)) {
-            if (!activeTickers.has(chatId)) {
-                activeTickers.set(chatId, { seen: new Set(seenArray) });
-            }
-        }
-        console.log(`Daten für ${Object.keys(data).length} Ticker aus der Datei geladen.`);
-    } catch (e) { console.log('Keine gespeicherte Ticker-Datei gefunden, starte frisch.'); }
-}
-
-function saveSeenTickers() {
-    try {
-        const dataToSave = {};
-        for (const [chatId, tickerState] of activeTickers.entries()) {
-            if (tickerState.seen) { dataToSave[chatId] = [...tickerState.seen]; }
-        }
-        fs.writeFileSync(SEEN_FILE, JSON.stringify(dataToSave, null, 2), 'utf8');
-    } catch (e) { console.error('Fehler beim Speichern der Ticker-Daten:', e); }
-}
-
-// --- HELPER FUNCTIONS ---
-function formatTimeFromSeconds(sec) {
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
-
-function formatEvent(ev, tickerState) {
-    const eventInfo = EVENT_MAP[ev.event] || { label: `Unbekanntes Event ${ev.event}`, emoji: "📢" };
-    const homeTeamName = tickerState.teamNames ? tickerState.teamNames.home : 'Heim';
-    const guestTeamName = tickerState.teamNames ? tickerState.teamNames.guest : 'Gast';
-    const team = ev.teamHome ? homeTeamName : guestTeamName;
-    const score = `${ev.pointsHome}:${ev.pointsGuest}`;
-    const player = (ev.personFirstname || '') + (ev.personLastname ? ` ${ev.personLastname}` : '');
-    const time = ev.second ? ` (${formatTimeFromSeconds(ev.second)})` : '';
-    const formattedPlayer = player ? ` durch ${player}` : '';
-
-    switch (ev.event) {
-        case 4: return `${eventInfo.emoji} Tor für ${team}${formattedPlayer} - Stand: ${score}${time}`;
-        case 5: return `${eventInfo.emoji} 7-Meter Tor für ${team}${formattedPlayer} - Stand: ${score}${time}`;
-        case 6: return `${eventInfo.emoji} 7-Meter Fehlwurf (${team}) - Stand: ${score}${time}`;
-        case 2: return `${eventInfo.emoji} ${eventInfo.label} ${homeTeamName}${time}`;
-        case 3: return `${eventInfo.emoji} ${eventInfo.label} ${guestTeamName}${time}`;
-        case 7: case 8: case 9: return `${eventInfo.emoji} ${eventInfo.label} für ${team}${formattedPlayer}${time}`;
-        case 14: return `${eventInfo.emoji} Halbzeit - Stand: ${score}`;
-        case 16: return `${eventInfo.emoji} Spielende - Endstand: ${score}`;
-        case 0: case 1: case 17: return ``;
-        default: return `${eventInfo.emoji} ${eventInfo.label} - Stand: ${score}`;
-    }
-}
 
 // --- WHATSAPP CLIENT ---
 const client = new Client({
@@ -93,12 +22,17 @@ const client = new Client({
     }
 });
 
+// --- INITIALIZE MODULES ---
+// Pass the shared state variables to the polling module
+initializePolling(activeTickers, jobQueue, client);
+
+// --- CLIENT EVENTS ---
 client.on('qr', qr => { qrcode.generate(qr, { small: true }); console.log('QR-Code generiert. Scannen Sie diesen mit WhatsApp.'); });
-client.on('ready', () => { console.log('WhatsApp-Client ist bereit!'); loadSeenTickers(); });
+client.on('ready', () => { console.log('WhatsApp-Client ist bereit!'); loadSeenTickers(activeTickers); });
 client.on('disconnected', (reason) => {
     console.log('Client getrennt:', reason);
     activeTickers.forEach(ticker => { ticker.isPolling = false; });
-    saveSeenTickers();
+    saveSeenTickers(activeTickers);
 });
 
 // --- MESSAGE LISTENER ---
@@ -145,160 +79,24 @@ client.on('message', async msg => {
             if (index > -1) jobQueue.splice(index, 1);
         }
         activeTickers.delete(chatId);
-        saveSeenTickers();
-        await msg.reply('Alle Ticker-Daten für diese Gruppe wurden zurückgesetzt. Sie können jetzt einen neuen Ticker starten.');
+        saveSeenTickers(activeTickers);
+        await msg.reply('Alle Ticker-Daten für diese Gruppe wurden zurückgesetzt.');
         console.log(`Ticker-Daten für Gruppe ${chat.name} (${chatId}) wurden manuell zurückgesetzt.`);
     } else if (command === '!start') {
-        await msg.reply(`Fehler: Bitte geben Sie eine gültige URL an. Format:\n\n!start <URL-zur-Live-Ticker-Webseite>`);
+        await msg.reply(`Fehler: Bitte geben Sie eine gültige URL an.`);
     }
 });
 
-// --- POLLING LOGIC ---
-function masterScheduler() {
-    const tickers = Array.from(activeTickers.values()).filter(t => t.isPolling);
-    if (tickers.length === 0) return;
-
-    lastPolledIndex = (lastPolledIndex + 1) % tickers.length;
-    const tickerStateToPoll = tickers[lastPolledIndex];
-    const chatId = [...activeTickers.entries()].find(([key, val]) => val === tickerStateToPoll)?.[0];
-
-    if (chatId && !jobQueue.some(job => job.chatId === chatId)) {
-        jobQueue.push({ chatId, meetingPageUrl: tickerStateToPoll.meetingPageUrl, tickerState: tickerStateToPoll });
-        console.log(`[${chatId}] Job zur Warteschlange hinzugefügt. Aktuelle Länge: ${jobQueue.length}`);
-    }
-}
-
-async function startPolling(meetingPageUrl, chatId) {
-    const urlRegex = /https:\/\/hbde-live\.liga\.nu\/nuScoreLive\/#\/groups\/\d+\/meetings\/\d+/;
-    if (!urlRegex.test(meetingPageUrl)) {
-        await client.sendMessage(chatId, 'Fehler: Die angegebene URL ist keine gültige Live-Ticker-Seiten-URL.');
-        return;
-    }
-
-    const tickerState = activeTickers.get(chatId) || { seen: new Set() };
-    tickerState.isPolling = true;
-    tickerState.meetingPageUrl = meetingPageUrl;
-    activeTickers.set(chatId, tickerState);
-
-    await client.sendMessage(chatId, `Live-Ticker wird für diese Gruppe gestartet...`);
-
-    if (!jobQueue.some(job => job.chatId === chatId)) {
-        jobQueue.unshift({ chatId, meetingPageUrl: tickerState.meetingPageUrl, tickerState });
-    }
-}
-
-async function runQueueWorker() {
-    if (isWorkerRunning || jobQueue.length === 0) return;
-    
-    isWorkerRunning = true;
-    const job = jobQueue.shift();
-    const { chatId, meetingPageUrl, tickerState } = job;
-    const timerLabel = `[${chatId}] Job Execution Time`;
-    console.time(timerLabel);
-
-    if (!tickerState.isPolling) {
-        console.log(`[${chatId}] Job wird übersprungen, da der Ticker gestoppt wurde.`);
-        isWorkerRunning = false;
-        console.timeEnd(timerLabel);
-        return;
-    }
-    
-    console.log(`[${chatId}] Worker startet Job. Verbleibende Jobs: ${jobQueue.length}`);
-    let browser = null;
-    try {
-        browser = await puppeteer.launch({ executablePath: '/usr/bin/chromium', args: ['--no-sandbox', '--disable-setuid-sandbox'] });
-        const page = await browser.newPage();
-        await page.setRequestInterception(true);
-
-        const apiCallPromise = new Promise((resolve, reject) => {
-            page.on('request', request => {
-                if (request.url().includes('/nuScoreLiveRestBackend/api/1/meeting/')) resolve(request.url());
-                request.continue();
-            });
-            setTimeout(() => reject(new Error('API-Request wurde nicht innerhalb von 30s abgefangen.')), 30000);
-        });
-
-        await page.goto(meetingPageUrl, { waitUntil: 'networkidle0', timeout: 45000 });
-        const capturedUrl = await apiCallPromise;
-        await browser.close();
-        browser = null;
-
-        const meetingApiRegex = /api\/1\/meeting\/(\d+)\/time\/(\d+)/;
-        const apiMatch = capturedUrl.match(meetingApiRegex);
-        const meetingId = apiMatch[1];
-
-        const metaRes = await axios.get(capturedUrl);
-        if (!tickerState.teamNames && metaRes.data.teamHome) {
-            tickerState.teamNames = { home: metaRes.data.teamHome, guest: metaRes.data.teamGuest };
-            await client.sendMessage(chatId, `*${tickerState.teamNames.home}* vs. *${tickerState.teamNames.guest}* - Ticker aktiv!`);
-        }
-        
-        const versionUid = metaRes.data.versionUid;
-        if (versionUid && versionUid !== tickerState.lastVersionUid) {
-            console.log(`[${chatId}] Neue Version erkannt: ${versionUid}`);
-            tickerState.lastVersionUid = versionUid;
-            
-            const eventsUrl = `https:\/\/hbde-live.liga.nu/nuScoreLiveRestBackend/api/1/events/${meetingId}/versions/${versionUid}`;
-            const eventsRes = await axios.get(eventsUrl);
-            
-            if (await processEvents(eventsRes.data, tickerState, chatId)) {
-                saveSeenTickers();
-            }
-        }
-    } catch (error) {
-        console.error(`[${chatId}] Fehler im Worker-Job:`, error.message);
-        if (browser) await browser.close();
-    } finally {
-        isWorkerRunning = false;
-        console.timeEnd(timerLabel);
-    }
-}
-
-async function processEvents(data, tickerState, chatId) {
-    if (!data || !Array.isArray(data.events)) return false;
-    let newEventsAdded = false;
-    const events = data.events.slice().sort((a, b) => a.idx - b.idx);
-
-    for (const ev of events) {
-        if (tickerState.seen.has(ev.idx)) continue;
-        
-        const msg = formatEvent(ev, tickerState);
-        console.log(`[${chatId}] Sende neues Event:`, msg);
-        if (msg) await client.sendMessage(chatId, msg);
-        
-        tickerState.seen.add(ev.idx);
-        newEventsAdded = true;
-
-        if (ev.event === 16) {
-            console.log(`[${chatId}] Spielende-Event empfangen. Ticker wird gestoppt.`);
-            tickerState.isPolling = false;
-            const index = jobQueue.findIndex(job => job.chatId === chatId);
-            if (index > -1) jobQueue.splice(index, 1);
-            
-            console.log(`[${chatId}] Automatische Bereinigung in 1 Stunde geplant.`);
-            setTimeout(() => {
-                if (activeTickers.has(chatId)) {
-                    activeTickers.delete(chatId);
-                    saveSeenTickers();
-                    console.log(`[${chatId}] Ticker-Daten automatisch bereinigt.`);
-                }
-            }, 3600000);
-            break;
-        }
-    }
-    return newEventsAdded;
-}
-
 // --- MAIN EXECUTION ---
 setInterval(masterScheduler, 20000); 
-setInterval(runQueueWorker, 1000); 
+setInterval(dispatcherLoop, 500);
 client.initialize();
 
 // --- APP SHUTDOWN ---
 process.on('SIGINT', async () => {
     console.log('(SIGINT) Empfangen. Bot wird heruntergefahren...');
     activeTickers.forEach(ticker => { ticker.isPolling = false; });
-    saveSeenTickers();
+    saveSeenTickers(activeTickers);
     if (client) await client.destroy();
     process.exit(0);
 });
