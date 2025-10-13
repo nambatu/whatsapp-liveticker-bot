@@ -1,5 +1,6 @@
-// app.js - Main File 
+// app.js - Main File (Corrected)
 require('dotenv').config();
+const path = require('path');
 const qrcode = require('qrcode-terminal');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const { loadSeenTickers, saveSeenTickers } = require('./utils.js');
@@ -8,8 +9,9 @@ const { initializePolling, masterScheduler, dispatcherLoop, startPolling } = req
 // --- GLOBAL STATE ---
 const activeTickers = new Map();
 const jobQueue = [];
+const SEEN_FILE = path.resolve(__dirname, 'seen_tickers.json'); // Central definition of the file path
 
-// --- WHATSAPP CLIENT --- 
+// --- WHATSAPP CLIENT ---
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
@@ -23,17 +25,20 @@ const client = new Client({
     }
 });
 
-// --- INITIALIZE MODULES --- 
-// Pass the shared state variables to the polling module
-initializePolling(activeTickers, jobQueue, client);
+// --- INITIALIZE MODULES ---
+// Pass all shared state variables, including the file path, to the polling module
+initializePolling(activeTickers, jobQueue, client, SEEN_FILE);
 
 // --- CLIENT EVENTS ---
 client.on('qr', qr => { qrcode.generate(qr, { small: true }); console.log('QR-Code generiert. Scannen Sie diesen mit WhatsApp.'); });
-client.on('ready', () => { console.log('WhatsApp-Client ist bereit!'); loadSeenTickers(activeTickers); });
+client.on('ready', () => { 
+    console.log('WhatsApp-Client ist bereit!'); 
+    loadSeenTickers(activeTickers, SEEN_FILE); // Pass the file path
+});
 client.on('disconnected', (reason) => {
     console.log('Client getrennt:', reason);
     activeTickers.forEach(ticker => { ticker.isPolling = false; });
-    saveSeenTickers(activeTickers);
+    saveSeenTickers(activeTickers, SEEN_FILE); // Pass the file path
 });
 
 // --- MESSAGE LISTENER ---
@@ -85,7 +90,7 @@ client.on('message', async msg => {
             if (index > -1) jobQueue.splice(index, 1);
         }
         activeTickers.delete(chatId);
-        saveSeenTickers(activeTickers);
+        saveSeenTickers(activeTickers, SEEN_FILE); // Pass the file path
         await msg.reply('Alle Ticker-Daten für diese Gruppe wurden zurückgesetzt.');
         console.log(`Ticker-Daten für Gruppe "${groupName}" (${chatId}) wurden manuell zurückgesetzt.`);
     } else if (command === '!start') {
@@ -102,7 +107,7 @@ client.initialize();
 process.on('SIGINT', async () => {
     console.log('(SIGINT) Empfangen. Bot wird heruntergefahren...');
     activeTickers.forEach(ticker => { ticker.isPolling = false; });
-    saveSeenTickers(activeTickers);
+    saveSeenTickers(activeTickers, SEEN_FILE); // Pass the file path
     if (client) await client.destroy();
     process.exit(0);
 });

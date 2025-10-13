@@ -5,9 +5,9 @@ const path = require('path');
 const { EVENT_MAP } = require('./config.js');
 
 // --- DATA PERSISTENCE (unverändert) ---
-function loadSeenTickers(activeTickers) {
+function loadSeenTickers(activeTickers, seenFilePath) { // Nimmt jetzt den Pfad entgegen
     try {
-        const raw = fs.readFileSync(SEEN_FILE, 'utf8');
+        const raw = fs.readFileSync(seenFilePath, 'utf8'); // Verwendet den übergebenen Pfad
         const data = JSON.parse(raw);
         for (const [chatId, seenArray] of Object.entries(data)) {
             if (!activeTickers.has(chatId)) {
@@ -20,7 +20,7 @@ function loadSeenTickers(activeTickers) {
     }
 }
 
-function saveSeenTickers(activeTickers) {
+function saveSeenTickers(activeTickers, seenFilePath) { // Nimmt jetzt den Pfad entgegen
     try {
         const dataToSave = {};
         for (const [chatId, tickerState] of activeTickers.entries()) {
@@ -28,7 +28,7 @@ function saveSeenTickers(activeTickers) {
                 dataToSave[chatId] = [...tickerState.seen];
             }
         }
-        fs.writeFileSync(SEEN_FILE, JSON.stringify(dataToSave, null, 2), 'utf8');
+        fs.writeFileSync(seenFilePath, JSON.stringify(dataToSave, null, 2), 'utf8'); // Verwendet den übergebenen Pfad
     } catch (e) {
         console.error('Fehler beim Speichern der Ticker-Daten:', e);
     }
