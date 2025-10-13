@@ -2,10 +2,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { EVENT_MAP } = require('./config.js'); // Import from our new config file
+const { EVENT_MAP } = require('./config.js');
 
-const SEEN_FILE = path.resolve(__dirname, 'seen_tickers.json');
-
+// --- DATA PERSISTENCE (unverändert) ---
 function loadSeenTickers(activeTickers) {
     try {
         const raw = fs.readFileSync(SEEN_FILE, 'utf8');
@@ -35,6 +34,14 @@ function saveSeenTickers(activeTickers) {
     }
 }
 
+// --- HELPER FUNCTIONS ---
+
+function abbreviatePlayerName(firstName, lastName) {
+    if (!lastName) return '';
+    if (!firstName) return lastName;
+    return `${firstName.charAt(0)}. ${lastName}`;
+}
+
 function formatTimeFromSeconds(sec) {
     const m = Math.floor(sec / 60);
     const s = sec % 60;
@@ -49,9 +56,8 @@ function formatEvent(ev, tickerState) {
     const time = ev.second ? ` (${formatTimeFromSeconds(ev.second)})` : '';
     const abbreviatedPlayer = abbreviatePlayerName(ev.personFirstname, ev.personLastname);
 
-    // Spieler-Text-Variante für Tore
     const playerForGoal = abbreviatedPlayer ? ` durch ${abbreviatedPlayer}` : '';
-
+    
     switch (ev.event) {
         case 4: // Tor
         case 5: // 7-Meter Tor
