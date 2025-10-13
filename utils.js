@@ -67,7 +67,7 @@ function formatEvent(ev, tickerState) {
             } else {
                 scoreLine = `${homeTeamName}  ${ev.pointsHome}:*${ev.pointsGuest}* ${guestTeamName}`;
             }
-            return `${scoreLine}\n${eventInfo.emoji} Tor${playerForGoal}${time}`;
+            return `${scoreLine}\n${eventInfo.emoji} 7-Meter Tor${playerForGoal}${time}`;
         
         case 6: // 7-Meter Fehlwurf
              return `${eventInfo.emoji} 7-Meter Fehlwurf für *${team}*${playerForGoal}${time}`;
