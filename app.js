@@ -1,4 +1,42 @@
-// in app.js
+// app.js - Main File 
+require('dotenv').config();
+const qrcode = require('qrcode-terminal');
+const { Client, LocalAuth } = require('whatsapp-web.js');
+const { loadSeenTickers, saveSeenTickers } = require('./utils.js');
+const { initializePolling, masterScheduler, dispatcherLoop, startPolling } = require('./polling.js');
+
+// --- GLOBAL STATE ---
+const activeTickers = new Map();
+const jobQueue = [];
+
+// --- WHATSAPP CLIENT --- 
+const client = new Client({
+    authStrategy: new LocalAuth(),
+    puppeteer: {
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        executablePath: '/usr/bin/chromium'
+    },
+    webVersionCache: {
+        type: 'remote',
+        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
+    }
+});
+
+// --- INITIALIZE MODULES --- 
+// Pass the shared state variables to the polling module
+initializePolling(activeTickers, jobQueue, client);
+
+// --- CLIENT EVENTS ---
+client.on('qr', qr => { qrcode.generate(qr, { small: true }); console.log('QR-Code generiert. Scannen Sie diesen mit WhatsApp.'); });
+client.on('ready', () => { console.log('WhatsApp-Client ist bereit!'); loadSeenTickers(activeTickers); });
+client.on('disconnected', (reason) => {
+    console.log('Client getrennt:', reason);
+    activeTickers.forEach(ticker => { ticker.isPolling = false; });
+    saveSeenTickers(activeTickers);
+});
+
+// --- MESSAGE LISTENER ---
 client.on('message', async msg => {
     if (!msg.body.startsWith('!')) return;
     const chat = await msg.getChat();
@@ -9,7 +47,7 @@ client.on('message', async msg => {
     const chatId = chat.id._serialized;
     const args = msg.body.split(' ');
     const command = args[0].toLowerCase();
-    const groupName = chat.name; // HIER wird der Gruppenname korrekt erfasst
+    const groupName = chat.name;
 
     if (command === '!start' && args.length >= 2) {
         if (activeTickers.has(chatId) && (activeTickers.get(chatId).isPolling || activeTickers.get(chatId).isScheduled)) {
@@ -18,7 +56,6 @@ client.on('message', async msg => {
         }
         const meetingPageUrl = args[1];
         try {
-            // HIER wird der groupName an die polling.js übergeben
             await startPolling(meetingPageUrl, chatId, groupName);
         } catch (error) {
             console.error(`[${chatId}] Kritischer Fehler beim Starten des Tickers:`, error);
@@ -54,4 +91,18 @@ client.on('message', async msg => {
     } else if (command === '!start') {
         await msg.reply(`Fehler: Bitte geben Sie eine gültige URL an.`);
     }
+});
+
+// --- MAIN EXECUTION ---
+setInterval(masterScheduler, 20000); 
+setInterval(dispatcherLoop, 500);
+client.initialize();
+
+// --- APP SHUTDOWN ---
+process.on('SIGINT', async () => {
+    console.log('(SIGINT) Empfangen. Bot wird heruntergefahren...');
+    activeTickers.forEach(ticker => { ticker.isPolling = false; });
+    saveSeenTickers(activeTickers);
+    if (client) await client.destroy();
+    process.exit(0);
 });
