@@ -1,7 +1,7 @@
 // ai.js
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleGenerativeAI } = require("@google/genai"); // Use the new package
 
-// Initialisiere die KI mit dem API-Schlüssel aus der .env-Datei
+// The client gets the API key from the environment variable `GEMINI_API_KEY`.
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // NEUE Funktion zum Extrahieren von detaillierten Statistiken
@@ -61,13 +61,11 @@ async function generateGameSummary(events, teamNames, groupName) {
     const finalEvent = events.find(e => e.event === 16) || events[events.length - 1];
     const halftimeEvent = events.find(e => e.event === 14);
 
-    // 1. Dynamische Spiellänge ermitteln
     const gameDurationSeconds = finalEvent.second;
     const gameDurationMinutes = Math.round(gameDurationSeconds / 60);
 
-    // Score-Progression basierend auf prozentualer Spielzeit
     let scoreProgression = "Start: 0:0";
-    [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9].forEach(fraction => {
+    [0.25, 0.5, 0.75].forEach(fraction => { // Reduced points for a cleaner prompt
         const targetSecond = gameDurationSeconds * fraction;
         const eventAtTime = events.find(e => e.second >= targetSecond);
         if (eventAtTime) {
@@ -75,10 +73,8 @@ async function generateGameSummary(events, teamNames, groupName) {
         }
     });
 
-    // 2. Detaillierte Statistiken extrahieren
     const gameStats = extractGameStats(events, teamNames);
 
-    // 3. & 4. Neuer, kreativer und parteiischer Prompt
     const prompt = `Du bist ein witziger, leicht sarkastischer und fachkundiger deutscher Handball-Kommentator.
     Deine Aufgabe ist es, eine kurze, unterhaltsame Zusammenfassung (ca. 2-4 Sätze) für ein gerade beendetes Spiel zu schreiben.
 
@@ -99,7 +95,7 @@ async function generateGameSummary(events, teamNames, groupName) {
     - 7-Meter ${teamNames.guest}: ${gameStats.guestSevenMeters}
 
     Anweisungen:
-    1.  Gib deiner Zusammenfassung eine kreative, reißerische Überschrift in Fett (z.B. Herzschlagfinale in der Halle West! oder Eine Lehrstunde in Sachen Abwehrschlacht.).
+    1.  Gib deiner Zusammenfassung eine kreative, reißerische Überschrift in Fett (z.B. *Herzschlagfinale in der Halle West!* oder *Eine Lehrstunde in Sachen Abwehrschlacht.*).
     2.  Verwende die Statistiken für spitze Kommentare. (z.B. "Mit ${gameStats.guestPenalties} Zeitstrafen hat sich Team Gast das Leben selbst schwer gemacht." oder "Am Ende hat die Kaltschnäuzigkeit vom 7-Meter-Punkt den Unterschied gemacht.")
     3.  Sei kreativ, vermeide Standardfloskeln. Gib dem Kommentar Persönlichkeit! Vermeide Sachen aus den Daten zu interpretieren die nicht daraus zu erschließen sind, bleibe lieber bei den Fakten als eine "zu offensive Abwehr" zu erfinden. 
     4.  Falls der Gruppenname keinem Team zuzuordnen ist, ignoriere ihn und erwähne ihn nirgendwo. Falls sich die Gruppe aber definitiv einem Team zuordnen lässt, unterstütze das Team mit Herzblut und roaste auch gerne das gegnerische Team.
@@ -107,7 +103,8 @@ async function generateGameSummary(events, teamNames, groupName) {
     Deine Zusammenfassung (nur Überschrift und Text, ohne "Zusammenfassung:"):`;
 
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-001" });
+        // Use the powerful gemini-pro model
+        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
         const result = await model.generateContent(prompt);
         const response = await result.response;
         return `🤖 *KI-Analyse zum Spiel:*\n\n${response.text()}`;
