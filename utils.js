@@ -76,9 +76,10 @@ function formatEvent(ev, tickerState) {
         case 3: // Timeout Gast
             return `${eventInfo.emoji} Timeout für *${team}*`;
         
-        case 7: // Rote Karte
         case 8: // Zeitstrafe
         case 9: // Gelbe Karte
+        case 11: // Rote Karte
+
             if (abbreviatedPlayer) {
                 return `${eventInfo.emoji} ${eventInfo.label} für ${abbreviatedPlayer} (*${team}*)${time}`;
             } else {
