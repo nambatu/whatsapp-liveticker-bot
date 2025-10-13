@@ -99,9 +99,9 @@ async function generateGameSummary(events, teamNames, groupName) {
     - 7-Meter ${teamNames.guest}: ${gameStats.guestSevenMeters}
 
     Anweisungen:
-    1.  Gib deiner Zusammenfassung eine kreative, reißerische Überschrift in Fett (z.B. *Herzschlagfinale in der Halle West!* oder *Eine Lehrstunde in Sachen Abwehrschlacht.*).
+    1.  Gib deiner Zusammenfassung eine kreative, reißerische Überschrift in Fett (z.B. Herzschlagfinale in der Halle West! oder Eine Lehrstunde in Sachen Abwehrschlacht.).
     2.  Verwende die Statistiken für spitze Kommentare. (z.B. "Mit ${gameStats.guestPenalties} Zeitstrafen hat sich Team Gast das Leben selbst schwer gemacht." oder "Am Ende hat die Kaltschnäuzigkeit vom 7-Meter-Punkt den Unterschied gemacht.")
-    3.  Sei kreativ, vermeide Standardfloskeln. Gib dem Kommentar Persönlichkeit!
+    3.  Sei kreativ, vermeide Standardfloskeln. Gib dem Kommentar Persönlichkeit! Vermeide Sachen aus den Daten zu interpretieren die nicht daraus zu erschließen sind, bleibe lieber bei den Fakten als eine "zu offensive Abwehr" zu erfinden.
 
     Deine Zusammenfassung (nur Überschrift und Text, ohne "Zusammenfassung:"):`;
 

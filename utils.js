@@ -46,34 +46,52 @@ function formatEvent(ev, tickerState) {
     const homeTeamName = tickerState.teamNames ? tickerState.teamNames.home : 'Heim';
     const guestTeamName = tickerState.teamNames ? tickerState.teamNames.guest : 'Gast';
     const team = ev.teamHome ? homeTeamName : guestTeamName;
-    const scoreLine = `${homeTeamName}  *${ev.pointsHome}:${ev.pointsGuest}* ${guestTeamName}`;
-    const player = (ev.personFirstname || '') + (ev.personLastname ? ` ${ev.personLastname}` : '');
     const time = ev.second ? ` (${formatTimeFromSeconds(ev.second)})` : '';
-    const formattedPlayer = player.trim() ? ` durch ${player.trim()}` : '';
+    const abbreviatedPlayer = abbreviatePlayerName(ev.personFirstname, ev.personLastname);
+
+    // Spieler-Text-Variante für Tore
+    const playerForGoal = abbreviatedPlayer ? ` durch ${abbreviatedPlayer}` : '';
 
     switch (ev.event) {
         case 4: // Tor
         case 5: // 7-Meter Tor
-            return `${scoreLine}\n${eventInfo.emoji} Tor für *${team}*${formattedPlayer}${time}`;
+            let scoreLine;
+            if (ev.teamHome) {
+                scoreLine = `${homeTeamName}  *${ev.pointsHome}*:${ev.pointsGuest}  ${guestTeamName}`;
+            } else {
+                scoreLine = `${homeTeamName}  ${ev.pointsHome}:*${ev.pointsGuest}* ${guestTeamName}`;
+            }
+            return `${scoreLine}\n${eventInfo.emoji} Tor${playerForGoal}${time}`;
+        
         case 6: // 7-Meter Fehlwurf
-             return `${scoreLine}\n${eventInfo.emoji} 7-Meter Fehlwurf von *${team}*${time}`;
+             return `${eventInfo.emoji} 7-Meter Fehlwurf für *${team}*${playerForGoal}${time}`;
+        
         case 2: // Timeout Heim
         case 3: // Timeout Gast
-            return `${scoreLine}\n${eventInfo.emoji} Timeout für *${team}*`;
+            return `${eventInfo.emoji} Timeout für *${team}*`;
+        
         case 7: // Rote Karte
         case 8: // Zeitstrafe
         case 9: // Gelbe Karte
-            const playerForCard = player.trim() ? ` (${player.trim()})` : '';
-            return `${scoreLine}\n${eventInfo.emoji} ${eventInfo.label} für *${team}*${playerForCard}`;
+            if (abbreviatedPlayer) {
+                return `${eventInfo.emoji} ${eventInfo.label} für ${abbreviatedPlayer} (*${team}*)${time}`;
+            } else {
+                return `${eventInfo.emoji} ${eventInfo.label} für *${team}*${time}`;
+            }
+        
         case 14: // Halbzeit
             return `⏸️ *Halbzeit*\n${homeTeamName}  *${ev.pointsHome}:${ev.pointsGuest}* ${guestTeamName}`;
+        
         case 16: // Spielende
             return `🏁 *Spielende*\n${homeTeamName}  *${ev.pointsHome}:${ev.pointsGuest}* ${guestTeamName}`;
+        
         case 15: // Spielbeginn
              return `▶️ *Das Spiel hat begonnen!*`;
+        
         case 0: case 1: case 17: return ``;
+        
         default:
-            return `${scoreLine}\n${eventInfo.emoji} ${eventInfo.label}`;
+            return `${eventInfo.emoji} ${eventInfo.label}`;
     }
 }
 
