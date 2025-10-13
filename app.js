@@ -37,6 +37,7 @@ client.on('disconnected', (reason) => {
 });
 
 // --- MESSAGE LISTENER ---
+// in app.js
 client.on('message', async msg => {
     if (!msg.body.startsWith('!')) return;
     const chat = await msg.getChat();
@@ -48,41 +49,46 @@ client.on('message', async msg => {
     const args = msg.body.split(' ');
     const command = args[0].toLowerCase();
 
+    // The !start command now calls the scheduleTicker function
     if (command === '!start' && args.length >= 2) {
-        if (activeTickers.has(chatId) && activeTickers.get(chatId).isPolling) {
-            await msg.reply('In dieser Gruppe läuft bereits ein Live-Ticker. Stoppen Sie ihn zuerst mit `!stop`.');
+        if (activeTickers.has(chatId) && (activeTickers.get(chatId).isPolling || activeTickers.get(chatId).isScheduled)) {
+            await msg.reply('In dieser Gruppe läuft oder ist bereits ein Live-Ticker geplant. Stoppen oder resetten Sie ihn zuerst.');
             return;
         }
         const meetingPageUrl = args[1];
         try {
-            await startPolling(meetingPageUrl, chatId);
+            await startPolling(meetingPageUrl, chatId); // This now calls scheduleTicker
         } catch (error) {
             console.error(`[${chatId}] Kritischer Fehler beim Starten des Tickers:`, error);
             await msg.reply('Ein kritischer Fehler ist aufgetreten und der Ticker konnte nicht gestartet werden.');
             activeTickers.delete(chatId);
         }
-    } else if (command === '!stop') {
+    } else if (command === '!stop' || command === '!reset') {
         const tickerState = activeTickers.get(chatId);
-        if (tickerState && tickerState.isPolling) {
-            tickerState.isPolling = false;
-            const index = jobQueue.findIndex(job => job.chatId === chatId);
-            if (index > -1) jobQueue.splice(index, 1);
-            await client.sendMessage(chatId, 'Live-Ticker in dieser Gruppe gestoppt.');
+        if (!tickerState) {
+            await msg.reply('Für diese Gruppe gibt es keine gespeicherten Ticker-Daten.');
+            return;
+        }
+
+        // Cancel scheduled tickers
+        if (tickerState.scheduleTimeout) {
+            clearTimeout(tickerState.scheduleTimeout);
+        }
+
+        // Stop polling tickers
+        tickerState.isPolling = false;
+        const index = jobQueue.findIndex(job => job.chatId === chatId);
+        if (index > -1) jobQueue.splice(index, 1);
+
+        if (command === '!stop') {
+            await client.sendMessage(chatId, 'Laufender/geplanter Live-Ticker in dieser Gruppe gestoppt.');
             console.log(`Live-Ticker für Gruppe ${chat.name} (${chatId}) gestoppt.`);
-        } else {
-            await msg.reply('In dieser Gruppe läuft derzeit kein Live-Ticker.');
+        } else { // !reset
+            activeTickers.delete(chatId);
+            saveSeenTickers(activeTickers);
+            await msg.reply('Alle Ticker-Daten für diese Gruppe wurden zurückgesetzt.');
+            console.log(`Ticker-Daten für Gruppe ${chat.name} (${chatId}) wurden manuell zurückgesetzt.`);
         }
-    } else if (command === '!reset') {
-        const tickerState = activeTickers.get(chatId);
-        if (tickerState) {
-            tickerState.isPolling = false;
-            const index = jobQueue.findIndex(job => job.chatId === chatId);
-            if (index > -1) jobQueue.splice(index, 1);
-        }
-        activeTickers.delete(chatId);
-        saveSeenTickers(activeTickers);
-        await msg.reply('Alle Ticker-Daten für diese Gruppe wurden zurückgesetzt.');
-        console.log(`Ticker-Daten für Gruppe ${chat.name} (${chatId}) wurden manuell zurückgesetzt.`);
     } else if (command === '!start') {
         await msg.reply(`Fehler: Bitte geben Sie eine gültige URL an.`);
     }
