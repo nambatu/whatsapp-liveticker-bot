@@ -1,4 +1,4 @@
-// polling.js - Corrected and Complete
+// polling.js
 const axios = require('axios');
 const puppeteer = require('puppeteer');
 const { saveSeenTickers, formatEvent } = require('./utils.js');
@@ -21,9 +21,8 @@ function initializePolling(tickers, queue, whatsappClient) {
 
 // --- SCHEDULING & POLLING LOGIC ---
 
-// schedules the polling to start later
 async function scheduleTicker(meetingPageUrl, chatId, groupName) {
-    console.log(`[${chatId}] Ticker-Planung wird gestartet...`);
+    console.log(`[${chatId}] Ticker-Planung wird gestartet für Gruppe: ${groupName}`);
     
     let browser = null;
     try {
@@ -53,11 +52,13 @@ async function scheduleTicker(meetingPageUrl, chatId, groupName) {
 
         const teamNames = { home: gameData.teamHome, guest: gameData.teamGuest };
         const startTimeLocale = startTime.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-
+        
+        // ** THE FIX **
+        // Create and populate the tickerState object here, BEFORE the if/else block.
         const tickerState = activeTickers.get(chatId) || { seen: new Set() };
         tickerState.meetingPageUrl = meetingPageUrl;
         tickerState.teamNames = teamNames;
-        tickerState.groupName = groupName; // Store group name for the AI
+        tickerState.groupName = groupName; // Now the groupName is always saved.
         activeTickers.set(chatId, tickerState);
 
         if (delay > 0) {
@@ -85,7 +86,6 @@ async function scheduleTicker(meetingPageUrl, chatId, groupName) {
     }
 }
 
-// Activates the regular polling for a ticker
 function beginActualPolling(chatId) {
     const tickerState = activeTickers.get(chatId);
     if (!tickerState) return;
@@ -99,7 +99,6 @@ function beginActualPolling(chatId) {
     }
 }
 
-// The Master Scheduler adds jobs to the queue
 function masterScheduler() {
     const tickers = Array.from(activeTickers.values()).filter(t => t.isPolling);
     if (tickers.length === 0) return;
@@ -114,7 +113,6 @@ function masterScheduler() {
     }
 }
 
-// The Dispatcher starts workers if there are jobs and free slots
 function dispatcherLoop() {
     if (jobQueue.length > 0 && activeWorkers < MAX_WORKERS) {
         activeWorkers++;
@@ -123,7 +121,6 @@ function dispatcherLoop() {
     }
 }
 
-// The Worker runs the Puppeteer task for a single job
 async function runWorker(job) {
     const { chatId, tickerState, jobId } = job;
     const timerLabel = `[${chatId}] Job ${jobId} Execution Time`;
@@ -180,7 +177,6 @@ async function runWorker(job) {
     activeWorkers--;
 }
 
-// The event processor calls the AI at the end of the game
 async function processEvents(data, tickerState, chatId) {
     if (!data || !Array.isArray(data.events)) return false;
     let newEventsAdded = false;
@@ -190,6 +186,8 @@ async function processEvents(data, tickerState, chatId) {
         if (tickerState.seen.has(ev.idx)) continue;
         
         const msg = formatEvent(ev, tickerState);
+        // This console.log was missing in the file you provided
+        console.log(`[${chatId}] Sende neues Event:`, msg); 
         if (msg) await client.sendMessage(chatId, msg);
         
         tickerState.seen.add(ev.idx);
