@@ -35,7 +35,7 @@ async function scheduleTicker(meetingPageUrl, chatId, groupName) {
                 if (request.url().includes('/nuScoreLiveRestBackend/api/1/meeting/')) resolve(request.url());
                 request.continue();
             });
-            setTimeout(() => reject(new Error('API-Request wurde nicht innerhalb von 30s abgefangen.')), 30000);
+            setTimeout(() => reject(new Error('API-Request wurde nicht innerhalb von 60s abgefangen.')), 60000);
         });
 
         await page.goto(meetingPageUrl, { waitUntil: 'networkidle0', timeout: 45000 });
