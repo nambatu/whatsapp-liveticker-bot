@@ -13,11 +13,10 @@ let activeWorkers = 0;
 const MAX_WORKERS = 2;
 const PRE_GAME_START_MINUTES = 5; // Start polling 5 minutes before the game
 
-function initializePolling(tickers, queue, whatsappClient, seenFile) { // Neuer Parameter
+function initializePolling(tickers, queue, whatsappClient) {
     activeTickers = tickers;
     jobQueue = queue;
     client = whatsappClient;
-    seenFilePath = seenFile; // Speichere den Pfad
 }
 
 // --- SCHEDULING & POLLING LOGIC ---
@@ -214,7 +213,7 @@ async function processEvents(data, tickerState, chatId) {
             setTimeout(() => {
                 if (activeTickers.has(chatId)) {
                     activeTickers.delete(chatId);
-                    saveSeenTickers(activeTickers, seenFilePath); // Übergebe den gespeicherten Pfad
+                    saveSeenTickers(activeTickers);
                     console.log(`[${chatId}] Ticker-Daten automatisch bereinigt.`);
                 }
             }, 3600000);
