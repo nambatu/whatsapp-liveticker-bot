@@ -1,9 +1,8 @@
 // ai.js 
 const { GoogleGenAI } = require("@google/genai"); // Use GoogleGenAI
 
-// The client gets the API key from the .env file `GEMINI_API_KEY`.
+// The client gets the API key from the environment variable `GEMINI_API_KEY`.
 const genAI = new GoogleGenAI(process.env.GEMINI_API_KEY); // Use GoogleGenAI
-
 
 // Funktion zum Extrahieren von detaillierten Statistiken
 function extractGameStats(events, teamNames) {
@@ -106,7 +105,11 @@ async function generateGameSummary(events, teamNames, groupName) {
     try {
         const model = genAI.getGenerativeModel({ model: "gemini-pro" });
         const result = await model.generateContent(prompt);
-        const response = await result.response;
+        const response = await genAI.models.generateContent({
+            model: "gemini-pro",
+            contents: prompt,
+        });
+        
         return `🤖 *KI-Analyse zum Spiel:*\n\n${response.text()}`;
     } catch (error) {
         console.error("Fehler bei der AI-Zusammenfassung:", error);
