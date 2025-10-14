@@ -110,7 +110,7 @@ async function generateGameSummary(events, teamNames, groupName) {
             contents: prompt,
         });
         
-        return `🤖 *KI-Analyse zum Spiel:*\n\n${response.text()}`;
+        return `🤖 *KI-Analyse zum Spiel:*\n\n${response.text}`;
     } catch (error) {
         console.error("Fehler bei der AI-Zusammenfassung:", error);
         return "";
