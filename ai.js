@@ -106,7 +106,7 @@ async function generateGameSummary(events, teamNames, groupName) {
         //const model = genAI.getGenerativeModel({ model: "gemini-pro" });
         //const result = await model.generateContent(prompt);
         const response = await genAI.models.generateContent({
-            model: "gemini-pro",
+            model: "gemini-2.5-pro",
             contents: prompt,
         });
         
