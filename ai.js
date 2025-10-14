@@ -103,8 +103,8 @@ async function generateGameSummary(events, teamNames, groupName) {
     Deine Zusammenfassung (nur Überschrift und Text, ohne "Zusammenfassung:"):`;
 
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-        const result = await model.generateContent(prompt);
+        //const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+        //const result = await model.generateContent(prompt);
         const response = await genAI.models.generateContent({
             model: "gemini-pro",
             contents: prompt,
