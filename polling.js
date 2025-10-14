@@ -35,7 +35,7 @@ async function scheduleTicker(meetingPageUrl, chatId, groupName) {
                 if (request.url().includes('/nuScoreLiveRestBackend/api/1/meeting/')) resolve(request.url());
                 request.continue();
             });
-            setTimeout(() => reject(new Error('API-Request wurde nicht innerhalb von 60s abgefangen.')), 60000);
+            setTimeout(() => reject(new Error('API-Request wurde nicht innerhalb von 30s abgefangen.')), 30000);
         });
 
         await page.goto(meetingPageUrl, { waitUntil: 'networkidle0', timeout: 45000 });
@@ -53,12 +53,11 @@ async function scheduleTicker(meetingPageUrl, chatId, groupName) {
         const teamNames = { home: gameData.teamHome, guest: gameData.teamGuest };
         const startTimeLocale = startTime.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
         
-        // ** THE FIX **
-        // Create and populate the tickerState object here, BEFORE the if/else block.
         const tickerState = activeTickers.get(chatId) || { seen: new Set() };
         tickerState.meetingPageUrl = meetingPageUrl;
         tickerState.teamNames = teamNames;
-        tickerState.groupName = groupName; // Now the groupName is always saved.
+        tickerState.groupName = groupName;
+        tickerState.halftimeLength = gameData.halftimeLength; // ** STORE HALFTIME LENGTH **
         activeTickers.set(chatId, tickerState);
 
         if (delay > 0) {
@@ -82,7 +81,7 @@ async function scheduleTicker(meetingPageUrl, chatId, groupName) {
         console.error(`[${chatId}] Fehler bei der Ticker-Planung:`, error);
         await client.sendMessage(chatId, 'Fehler: Konnte die Spieldaten nicht abrufen, um den Ticker zu planen.');
         if (browser) await browser.close();
-        activeTickers.delete(chatId); // Clean up failed schedule
+        activeTickers.delete(chatId);
     }
 }
 
@@ -186,7 +185,6 @@ async function processEvents(data, tickerState, chatId) {
         if (tickerState.seen.has(ev.idx)) continue;
         
         const msg = formatEvent(ev, tickerState);
-        // This console.log was missing in the file you provided
         console.log(`[${chatId}] Sende neues Event:`, msg); 
         if (msg) await client.sendMessage(chatId, msg);
         
@@ -200,7 +198,8 @@ async function processEvents(data, tickerState, chatId) {
             if (index > -1) jobQueue.splice(index, 1);
             
             try {
-                const summary = await generateGameSummary(events, tickerState.teamNames, tickerState.groupName);
+                // ** PASS HALFTIME LENGTH TO THE AI FUNCTION **
+                const summary = await generateGameSummary(events, tickerState.teamNames, tickerState.groupName, tickerState.halftimeLength);
                 if (summary) await client.sendMessage(chatId, summary);
             } catch (e) { console.error(`[${chatId}] Fehler beim Senden der AI-Zusammenfassung:`, e); }
             
@@ -213,7 +212,7 @@ async function processEvents(data, tickerState, chatId) {
             setTimeout(() => {
                 if (activeTickers.has(chatId)) {
                     activeTickers.delete(chatId);
-                    saveSeenTickers(activeTickers);
+                    saveSeenTickers(activeTickers, seenFilePath);
                     console.log(`[${chatId}] Ticker-Daten automatisch bereinigt.`);
                 }
             }, 3600000);

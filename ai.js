@@ -52,7 +52,7 @@ function extractGameStats(events, teamNames) {
     };
 }
 
-async function generateGameSummary(events, teamNames, groupName) {
+async function generateGameSummary(events, teamNames, groupName, halftimeLength) {
     if (!process.env.GEMINI_API_KEY) {
         console.log("GEMINI_API_KEY nicht gefunden. KI-Zusammenfassung wird übersprungen.");
         return "";
@@ -61,20 +61,24 @@ async function generateGameSummary(events, teamNames, groupName) {
     const finalEvent = events.find(e => e.event === 16) || events[events.length - 1];
     const halftimeEvent = events.find(e => e.event === 14);
 
-    const gameDurationSeconds = finalEvent.second;
-    const gameDurationMinutes = Math.round(gameDurationSeconds / 60);
+    // ** 1. USE HALFTIMELENGTH TO DETERMINE GAME DURATION **
+    // Use the provided halftimeLength (in minutes) to calculate total duration. Default to 60 if not available.
+    const gameDurationMinutes = halftimeLength ? halftimeLength * 2 : 60;
 
+    // Score-Progression based on 5-minute intervals
     let scoreProgression = "Start: 0:0";
-    [0.25, 0.5, 0.75].forEach(fraction => { // Reduced points for a cleaner prompt
-        const targetSecond = gameDurationSeconds * fraction;
+    for (let minute = 5; minute <= gameDurationMinutes; minute += 5) {
+        const targetSecond = minute * 60;
         const eventAtTime = events.find(e => e.second >= targetSecond);
         if (eventAtTime) {
-            scoreProgression += `, nach ${Math.round(fraction * 100)}%: ${eventAtTime.pointsHome}:${eventAtTime.pointsGuest}`;
+            scoreProgression += `, ${minute}min: ${eventAtTime.pointsHome}:${eventAtTime.pointsGuest}`;
         }
-    });
+    }
 
+    // 2. Detaillierte Statistiken extrahieren
     const gameStats = extractGameStats(events, teamNames);
 
+    // 3. & 4. Neuer, kreativer und parteiischer Prompt
     const prompt = `Du bist ein witziger, leicht sarkastischer und fachkundiger deutscher Handball-Kommentator.
     Deine Aufgabe ist es, eine kurze, unterhaltsame Zusammenfassung (ca. 2-4 Sätze) für ein gerade beendetes Spiel zu schreiben.
 
