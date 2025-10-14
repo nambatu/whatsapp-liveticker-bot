@@ -1,10 +1,11 @@
-// ai.js
-const { GoogleGenerativeAI } = require("@google/genai"); // Use the new package
+// ai.js 
+const { GoogleGenAI } = require("@google/genai"); // Use GoogleGenAI
 
-// The client gets the API key from the environment variable `GEMINI_API_KEY`.
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+// The client gets the API key from the .env file `GEMINI_API_KEY`.
+const genAI = new GoogleGenAI(process.env.GEMINI_API_KEY); // Use GoogleGenAI
 
-// NEUE Funktion zum Extrahieren von detaillierten Statistiken
+
+// Funktion zum Extrahieren von detaillierten Statistiken
 function extractGameStats(events, teamNames) {
     const stats = {
         home: { name: teamNames.home, goals: new Map(), penalties: 0, sevenMetersMade: 0, sevenMetersMissed: 0 },
@@ -103,7 +104,6 @@ async function generateGameSummary(events, teamNames, groupName) {
     Deine Zusammenfassung (nur Überschrift und Text, ohne "Zusammenfassung:"):`;
 
     try {
-        // Use the powerful gemini-pro model
         const model = genAI.getGenerativeModel({ model: "gemini-pro" });
         const result = await model.generateContent(prompt);
         const response = await result.response;
