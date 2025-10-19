@@ -1,26 +1,22 @@
-// polling.js - Corrected
+// polling.js - Final with Schedule Persistence
 const axios = require('axios');
 const puppeteer = require('puppeteer');
-const { saveSeenTickers, formatEvent } = require('./utils.js');
+const { saveSeenTickers, formatEvent, saveScheduledTickers, loadScheduledTickers } = require('./utils.js'); // Added load/save schedule
 const { generateGameSummary } = require('./ai.js');
 
-// --- SHARED STATE (from app.js) ---
-let activeTickers, jobQueue, client, seenFilePath;
-
-// --- WORKER POOL CONFIG ---
+let activeTickers, jobQueue, client, seenFilePath, scheduleFilePath;
 let lastPolledIndex = -1;
 let activeWorkers = 0;
 const MAX_WORKERS = 2;
 const PRE_GAME_START_MINUTES = 5;
 
-function initializePolling(tickers, queue, whatsappClient, seenFile) {
+function initializePolling(tickers, queue, whatsappClient, seenFile, scheduleFile) {
     activeTickers = tickers;
     jobQueue = queue;
     client = whatsappClient;
     seenFilePath = seenFile;
+    scheduleFilePath = scheduleFile;
 }
-
-// --- SCHEDULING & POLLING LOGIC ---
 
 async function scheduleTicker(meetingPageUrl, chatId, groupName) {
     console.log(`[${chatId}] Ticker-Planung wird gestartet für Gruppe: ${groupName}`);
@@ -38,8 +34,7 @@ async function scheduleTicker(meetingPageUrl, chatId, groupName) {
         });
         await page.goto(meetingPageUrl, { waitUntil: 'networkidle0', timeout: 45000 });
         const capturedUrl = await apiCallPromise;
-        await browser.close();
-        browser = null;
+        await browser.close(); browser = null;
         const metaRes = await axios.get(capturedUrl);
         const gameData = metaRes.data;
         const scheduledTime = new Date(gameData.scheduled);
@@ -58,6 +53,14 @@ async function scheduleTicker(meetingPageUrl, chatId, groupName) {
             await client.sendMessage(chatId, `✅ Ticker für *${teamNames.home}* vs *${teamNames.guest}* ist geplant und startet automatisch um ca. ${startTimeLocale} Uhr.`);
             tickerState.isPolling = false;
             tickerState.isScheduled = true;
+            const currentSchedule = loadScheduledTickers(scheduleFilePath);
+            currentSchedule[chatId] = {
+                meetingPageUrl,
+                startTime: startTime.toISOString(),
+                groupName,
+                halftimeLength: gameData.halftimeLength
+            };
+            saveScheduledTickers(currentSchedule, scheduleFilePath);
             tickerState.scheduleTimeout = setTimeout(() => {
                 beginActualPolling(chatId);
             }, delay);
@@ -67,19 +70,39 @@ async function scheduleTicker(meetingPageUrl, chatId, groupName) {
             beginActualPolling(chatId);
         }
     } catch (error) {
-        console.error(`[${chatId}] Fehler bei der Ticker-Planung:`, error);
+        console.error(`[${chatId}] Fehler bei der Ticker-Planung:`, error.message);
         await client.sendMessage(chatId, 'Fehler: Konnte die Spieldaten nicht abrufen, um den Ticker zu planen.');
         if (browser) await browser.close();
         activeTickers.delete(chatId);
+    } finally {
+        if (browser) {
+             console.warn(`[${chatId}] Browser-Instanz in scheduleTicker wurde notfallmäßig geschlossen.`);
+             await browser.close();
+        }
     }
 }
 
 function beginActualPolling(chatId) {
     const tickerState = activeTickers.get(chatId);
-    if (!tickerState) return;
-    console.log(`[${chatId}] Die geplante Zeit ist erreicht. Aktiviere Polling.`);
+    if (!tickerState) {
+        console.warn(`[${chatId}] Ticker-Status nicht gefunden beim Versuch, das Polling zu starten.`);
+        // Ensure it's removed from schedule file if state is missing somehow
+        const currentSchedule = loadScheduledTickers(scheduleFilePath);
+         if (currentSchedule[chatId]) {
+             delete currentSchedule[chatId];
+             saveScheduledTickers(currentSchedule, scheduleFilePath);
+         }
+        return;
+    }
+    console.log(`[${chatId}] Aktiviere Polling.`);
     tickerState.isPolling = true;
     tickerState.isScheduled = false;
+    const currentSchedule = loadScheduledTickers(scheduleFilePath);
+    if (currentSchedule[chatId]) {
+        delete currentSchedule[chatId];
+        saveScheduledTickers(currentSchedule, scheduleFilePath);
+        console.log(`[${chatId}] Aus Planungsdatei entfernt.`);
+    }
     if (!jobQueue.some(job => job.chatId === chatId)) {
         jobQueue.unshift({ chatId, meetingPageUrl: tickerState.meetingPageUrl, tickerState, jobId: Date.now() });
     }
@@ -109,8 +132,8 @@ async function runWorker(job) {
     const { chatId, tickerState, jobId } = job;
     const timerLabel = `[${chatId}] Job ${jobId} Execution Time`;
     console.time(timerLabel);
-    if (!tickerState.isPolling) {
-        console.log(`[${chatId}] Job wird übersprungen, da der Ticker gestoppt wurde.`);
+    if (!tickerState || !tickerState.isPolling) { // Added check for tickerState existence
+        console.log(`[${chatId}] Job wird übersprungen, da der Ticker gestoppt wurde oder nicht existiert.`);
     } else {
         console.log(`[${chatId}] Worker startet Job. Verbleibende Jobs: ${jobQueue.length}. Aktive Worker: ${activeWorkers}`);
         let browser = null;
@@ -127,10 +150,10 @@ async function runWorker(job) {
             });
             await page.goto(job.meetingPageUrl, { waitUntil: 'networkidle0', timeout: 45000 });
             const capturedUrl = await apiCallPromise;
-            await browser.close();
-            browser = null;
+            await browser.close(); browser = null;
             const meetingApiRegex = /api\/1\/meeting\/(\d+)\/time\/(\d+)/;
             const apiMatch = capturedUrl.match(meetingApiRegex);
+            if (!apiMatch) throw new Error("Konnte Meeting ID nicht aus URL extrahieren.");
             const meetingId = apiMatch[1];
             const metaRes = await axios.get(capturedUrl);
             if (!tickerState.teamNames && metaRes.data.teamHome) {
@@ -164,7 +187,7 @@ async function processEvents(data, tickerState, chatId) {
         if (tickerState.seen.has(ev.idx)) continue;
         const msg = formatEvent(ev, tickerState);
         if (msg) {
-            console.log(`[${chatId}] Sende neues Event:`, msg); 
+            console.log(`[${chatId}] Sende neues Event:`, msg);
             await client.sendMessage(chatId, msg);
         }
         tickerState.seen.add(ev.idx);

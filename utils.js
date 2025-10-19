@@ -2,15 +2,14 @@
 
 const fs = require('fs');
 const path = require('path');
-const { EVENT_MAP } = require('./config.js'); // Import from our new config file
+const { EVENT_MAP } = require('./config.js'); 
 
 // SEEN_FILE constant removed from here
 
 // --- DATA PERSISTENCE ---
-// Modified to accept seenFilePath argument
 function loadSeenTickers(activeTickers, seenFilePath) {
     try {
-        const raw = fs.readFileSync(seenFilePath, 'utf8'); // Uses argument
+        const raw = fs.readFileSync(seenFilePath, 'utf8'); 
         const data = JSON.parse(raw);
         for (const [chatId, seenArray] of Object.entries(data)) {
             if (!activeTickers.has(chatId)) {
@@ -23,7 +22,6 @@ function loadSeenTickers(activeTickers, seenFilePath) {
     }
 }
 
-// Modified to accept seenFilePath argument
 function saveSeenTickers(activeTickers, seenFilePath) {
     try {
         const dataToSave = {};
@@ -35,6 +33,24 @@ function saveSeenTickers(activeTickers, seenFilePath) {
         fs.writeFileSync(seenFilePath, JSON.stringify(dataToSave, null, 2), 'utf8'); // Uses argument
     } catch (e) {
         console.error('Fehler beim Speichern der Ticker-Daten:', e);
+    }
+}
+
+function loadScheduledTickers(scheduleFilePath) {
+    try {
+        const raw = fs.readFileSync(scheduleFilePath, 'utf8');
+        return JSON.parse(raw); // Returns the parsed object or array
+    } catch (e) {
+        console.log('Keine gespeicherte Planungsdatei gefunden.');
+        return {}; // Return an empty object if file doesn't exist or is invalid
+    }
+}
+
+function saveScheduledTickers(scheduledTickers, scheduleFilePath) {
+    try {
+        fs.writeFileSync(scheduleFilePath, JSON.stringify(scheduledTickers, null, 2), 'utf8');
+    } catch (e) {
+        console.error('Fehler beim Speichern der geplanten Ticker:', e);
     }
 }
 
@@ -52,7 +68,6 @@ function formatTimeFromSeconds(sec) {
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-// User's version of formatEvent, including the fix for Tor/7-Meter Tor
 function formatEvent(ev, tickerState) {
     const eventInfo = EVENT_MAP[ev.event] || { label: `Unbekanntes Event ${ev.event}`, emoji: "📢" };
     const homeTeamName = tickerState.teamNames ? tickerState.teamNames.home : 'Heim';
@@ -120,5 +135,7 @@ function formatEvent(ev, tickerState) {
 module.exports = {
     loadSeenTickers,
     saveSeenTickers,
-    formatEvent
+    formatEvent,
+    loadScheduledTickers, 
+    saveScheduledTickers
 };
