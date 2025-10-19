@@ -2,12 +2,15 @@
 
 const fs = require('fs');
 const path = require('path');
-const { EVENT_MAP } = require('./config.js');
+const { EVENT_MAP } = require('./config.js'); // Import from our new config file
 
-// --- DATA PERSISTENCE (unverändert) ---
-function loadSeenTickers(activeTickers) {
+// SEEN_FILE constant removed from here
+
+// --- DATA PERSISTENCE ---
+// Modified to accept seenFilePath argument
+function loadSeenTickers(activeTickers, seenFilePath) {
     try {
-        const raw = fs.readFileSync(SEEN_FILE, 'utf8');
+        const raw = fs.readFileSync(seenFilePath, 'utf8'); // Uses argument
         const data = JSON.parse(raw);
         for (const [chatId, seenArray] of Object.entries(data)) {
             if (!activeTickers.has(chatId)) {
@@ -20,7 +23,8 @@ function loadSeenTickers(activeTickers) {
     }
 }
 
-function saveSeenTickers(activeTickers) {
+// Modified to accept seenFilePath argument
+function saveSeenTickers(activeTickers, seenFilePath) {
     try {
         const dataToSave = {};
         for (const [chatId, tickerState] of activeTickers.entries()) {
@@ -28,7 +32,7 @@ function saveSeenTickers(activeTickers) {
                 dataToSave[chatId] = [...tickerState.seen];
             }
         }
-        fs.writeFileSync(SEEN_FILE, JSON.stringify(dataToSave, null, 2), 'utf8');
+        fs.writeFileSync(seenFilePath, JSON.stringify(dataToSave, null, 2), 'utf8'); // Uses argument
     } catch (e) {
         console.error('Fehler beim Speichern der Ticker-Daten:', e);
     }
@@ -48,6 +52,7 @@ function formatTimeFromSeconds(sec) {
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
+// User's version of formatEvent, including the fix for Tor/7-Meter Tor
 function formatEvent(ev, tickerState) {
     const eventInfo = EVENT_MAP[ev.event] || { label: `Unbekanntes Event ${ev.event}`, emoji: "📢" };
     const homeTeamName = tickerState.teamNames ? tickerState.teamNames.home : 'Heim';
@@ -60,6 +65,15 @@ function formatEvent(ev, tickerState) {
     
     switch (ev.event) {
         case 4: // Tor
+            let scoreLine1;
+            if (ev.teamHome) {
+                scoreLine1 = `${homeTeamName}  *${ev.pointsHome}*:${ev.pointsGuest}  ${guestTeamName}`;
+            } else {
+                scoreLine1 = `${homeTeamName}  ${ev.pointsHome}:*${ev.pointsGuest}* ${guestTeamName}`;
+            }
+            // Corrected label for regular goal
+            return `${scoreLine1}\n${eventInfo.emoji} Tor${playerForGoal}${time}`; 
+            
         case 5: // 7-Meter Tor
             let scoreLine;
             if (ev.teamHome) {
@@ -67,7 +81,8 @@ function formatEvent(ev, tickerState) {
             } else {
                 scoreLine = `${homeTeamName}  ${ev.pointsHome}:*${ev.pointsGuest}* ${guestTeamName}`;
             }
-            return `${scoreLine}\n${eventInfo.emoji} 7-Meter Tor${playerForGoal}${time}`;
+            // Corrected label for 7-Meter goal
+            return `${scoreLine}\n${eventInfo.emoji} 7-Meter Tor${playerForGoal}${time}`; 
         
         case 6: // 7-Meter Fehlwurf
              return `${eventInfo.emoji} 7-Meter Fehlwurf für *${team}*${playerForGoal}${time}`;
