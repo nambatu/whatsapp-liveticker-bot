@@ -1,7 +1,7 @@
-// polling.js - Final with Schedule Persistence
+// polling.js
 const axios = require('axios');
 const puppeteer = require('puppeteer');
-const { saveSeenTickers, formatEvent, saveScheduledTickers, loadScheduledTickers } = require('./utils.js'); // Added load/save schedule
+const { saveSeenTickers, formatEvent, saveScheduledTickers, loadScheduledTickers } = require('./utils.js'); 
 const { generateGameSummary } = require('./ai.js');
 
 let activeTickers, jobQueue, client, seenFilePath, scheduleFilePath;
@@ -42,6 +42,7 @@ async function scheduleTicker(meetingPageUrl, chatId, groupName) {
         const delay = startTime.getTime() - Date.now();
         const teamNames = { home: gameData.teamHome, guest: gameData.teamGuest };
         const startTimeLocale = startTime.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+        const startDateLocale = startTime.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
         const tickerState = activeTickers.get(chatId) || { seen: new Set() };
         tickerState.meetingPageUrl = meetingPageUrl;
         tickerState.teamNames = teamNames;
@@ -50,7 +51,7 @@ async function scheduleTicker(meetingPageUrl, chatId, groupName) {
         activeTickers.set(chatId, tickerState);
         if (delay > 0) {
             console.log(`[${chatId}] Spiel beginnt um ${scheduledTime.toLocaleString()}. Polling startet in ${Math.round(delay / 60000)} Minuten.`);
-            await client.sendMessage(chatId, `✅ Ticker für *${teamNames.home}* vs *${teamNames.guest}* ist geplant und startet automatisch um ca. ${startTimeLocale} Uhr.`);
+            await client.sendMessage(chatId, `✅ Ticker für *${teamNames.home}* vs *${teamNames.guest}* ist geplant und startet automatisch am ${startDateLocale} um ca. ${startTimeLocale} Uhr.`);            
             tickerState.isPolling = false;
             tickerState.isScheduled = true;
             const currentSchedule = loadScheduledTickers(scheduleFilePath);
@@ -86,7 +87,6 @@ function beginActualPolling(chatId) {
     const tickerState = activeTickers.get(chatId);
     if (!tickerState) {
         console.warn(`[${chatId}] Ticker-Status nicht gefunden beim Versuch, das Polling zu starten.`);
-        // Ensure it's removed from schedule file if state is missing somehow
         const currentSchedule = loadScheduledTickers(scheduleFilePath);
          if (currentSchedule[chatId]) {
              delete currentSchedule[chatId];
@@ -132,7 +132,7 @@ async function runWorker(job) {
     const { chatId, tickerState, jobId } = job;
     const timerLabel = `[${chatId}] Job ${jobId} Execution Time`;
     console.time(timerLabel);
-    if (!tickerState || !tickerState.isPolling) { // Added check for tickerState existence
+    if (!tickerState || !tickerState.isPolling) { 
         console.log(`[${chatId}] Job wird übersprungen, da der Ticker gestoppt wurde oder nicht existiert.`);
     } else {
         console.log(`[${chatId}] Worker startet Job. Verbleibende Jobs: ${jobQueue.length}. Aktive Worker: ${activeWorkers}`);
