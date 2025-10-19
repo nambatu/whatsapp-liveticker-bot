@@ -129,15 +129,18 @@ The bot now uses the standard URL from your browser's address bar.
 
 ### Commands
 
-  * **`!start <URL>`**
-    Schedules the live ticker for a game. The bot will figure out the start time and activate itself automatically a few minutes before the match begins.
-    *Example:* `!start https://hbde-live.liga.nu/nuScoreLive/#/groups/12345/meetings/67890`
+* **`!start <URL> [recap]`**
+    Schedules the live ticker for a game. The `<URL>` is the address from your **browser's address bar** (e.g., `https://hbde-live.liga.nu/nuScoreLive/#/groups/.../meetings/...`).
+    * **Default Mode (Live):** Use `!start <URL>` to receive updates for every event immediately. ⚽
+    * **Recap Mode:** Use `!start <URL> recap` to receive a summary of events every 5 minutes. 📬
+    The bot will figure out the start time and activate itself automatically a few minutes before the match begins.
+    *Example:* `!start https://hbde-live.liga.nu/nuScoreLive/#/groups/12345/meetings/67890 recap`
 
-  * **`!stop`**
-    Stops the currently running or scheduled ticker for that group.
+* **`!stop`**
+    Stops the currently running or scheduled ticker for that group (works for both live and recap modes).
 
-  * **`!reset`**
-    Immediately stops the ticker, cancels any scheduled tasks, and **deletes all game data** for the group. This is useful for debugging and fixing the bot if it has any problems
+* **`!reset`**
+    Immediately stops the ticker, cancels any scheduled tasks, and **deletes all game data** for the group. This is useful for debugging and fixing the bot if it has any problems, and necessary before starting a new ticker in the same group.
 
 -----
 
