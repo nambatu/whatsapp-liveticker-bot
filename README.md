@@ -1,4 +1,3 @@
-````markdown
 # WhatsApp Live Ticker Bot ⚽
 
 A simple and powerful WhatsApp bot that provides real-time game updates from a [liga.nu](http://liga.nu) live ticker directly into your WhatsApp groups. Perfect for keeping your team or friends updated when they can't watch the game!
@@ -47,7 +46,7 @@ git clone [https://github.com/nambatu/whatsapp-liveticker-bot.git](https://githu
 
 # Move into the newly created folder
 cd whatsapp-liveticker-bot
-````
+
 
 **2. Create and Configure `.env` File**
 This file will securely store your AI API key.
