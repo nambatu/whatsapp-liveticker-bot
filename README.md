@@ -137,7 +137,7 @@ The bot now uses the standard URL from your browser's address bar.
     Stops the currently running or scheduled ticker for that group.
 
   * **`!reset`**
-    Immediately stops the ticker, cancels any scheduled tasks, and **deletes all game data** for the group. This is necessary before you can start a new ticker in the same group.
+    Immediately stops the ticker, cancels any scheduled tasks, and **deletes all game data** for the group. This is useful for debugging and fixing the bot if it has any problems
 
 -----
 
@@ -148,7 +148,7 @@ The bot is configured to run up to 2 parallel browser instances (`MAX_WORKERS = 
   * With 2 active games, each game gets polled every \~40 seconds.
   * With 4 active games, each game gets polled every \~80 seconds.
 
-If you have a powerful Raspberry Pi, you can cautiously increase the number of parallel workers by editing the `MAX_WORKERS` constant in `polling.js`.
+If you have a powerful Raspberry Pi or similar device, you can cautiously increase the number of parallel workers by editing the `MAX_WORKERS` constant in `polling.js`.
 
 -----
 
