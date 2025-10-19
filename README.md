@@ -16,7 +16,7 @@ A simple and powerful WhatsApp bot that provides real-time game updates from a [
 
 If you don't want to go through the setup process yourself, you can use the bot that I host on my personal Raspberry Pi.
 
-Just add my bot's WhatsApp number to your group and contact me with your group's name and the game you want to follow. I'll start the ticker for you!
+Just add my bot's WhatsApp number to your group and contact me with your group's name. It's easy plaug and play :) 
 
 You can reach me here:
 * **Email:** julianlangschwert@gmail.com
