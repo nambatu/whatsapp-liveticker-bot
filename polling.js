@@ -91,7 +91,8 @@ async function scheduleTicker(meetingPageUrl, chatId, groupName, mode) { // ** F
         if (delay > 0) {
             // Game is in the future
             console.log(`[${chatId}] Spiel beginnt um ${scheduledTime.toLocaleString()}. Polling startet in ${Math.round(delay / 60000)} Minuten.`);
-            await client.sendMessage(chatId, `✅ Ticker für *${teamNames.home}* vs *${teamNames.guest}* ist geplant (Modus: ${mode}) und startet automatisch am ${startDateLocale} um ca. ${startTimeLocale} Uhr.`);
+            const modeDescriptionScheduled = (mode === 'recap') ? "im Recap-Modus (5-Minuten-Zusammenfassungen)" : "mit Live-Updates";
+            await client.sendMessage(chatId, `✅ Ticker für *${teamNames.home}* vs *${teamNames.guest}* ist geplant ${modeDescriptionScheduled} und startet automatisch am ${startDateLocale} um ca. ${startTimeLocale} Uhr.`);            
             tickerState.isPolling = false; // Not actively polling yet
             tickerState.isScheduled = true; // Mark as scheduled
 
@@ -114,7 +115,15 @@ async function scheduleTicker(meetingPageUrl, chatId, groupName, mode) { // ** F
         } else {
             // Game has already started (or start time is imminent)
             console.log(`[${chatId}] Spiel hat bereits begonnen. Starte Polling sofort (Modus: ${mode}).`);
-            await client.sendMessage(chatId, `▶️ Ticker für *${teamNames.home}* vs *${teamNames.guest}* wird sofort gestartet (Modus: ${mode}).`);
+
+            let startMessage = `▶️ Ticker für *${teamNames.home}* vs *${teamNames.guest}* wird sofort gestartet. `;
+            if (mode === 'recap') {
+                startMessage += `Du erhältst alle ${RECAP_INTERVAL_MINUTES} Minuten eine Zusammenfassung. 📬`;
+            } else {
+                startMessage += `Du erhältst alle Events live! ⚽`;
+            }
+
+            await client.sendMessage(chatId, startMessage);
             beginActualPolling(chatId); // Activate polling immediately
         }
 
