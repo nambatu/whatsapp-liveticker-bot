@@ -23,6 +23,14 @@ const client = new Client({
         args: ['--no-sandbox', '--disable-setuid-sandbox'], // Necessary arguments for running on Linux/Raspberry Pi
         executablePath: '/usr/bin/chromium' // Specify path to Chromium on Raspberry Pi OS
     }
+/*    
+    ,
+    // Stabilizes connection by using a specific remote version of WhatsApp Web
+    webVersionCache: {
+        type: 'remote',
+        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2413.51.html'
+    }
+*/        
 });
 
 // --- INITIALIZE MODULES ---

@@ -122,4 +122,4 @@ async function generateGameSummary(events, teamNames, groupName, halftimeLength)
     }
 }
 
-module.exports = { generateGameSummary };
+module.exports = { generateGameSummary, extractGameStats };

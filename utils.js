@@ -197,8 +197,6 @@ function formatEvent(ev, tickerState) {
     }
 }
 
-// utils.js
-
 /**
  * Formats a single event into a line for the recap message.
  * @param {object} ev - The raw event object.
