@@ -197,11 +197,74 @@ function formatEvent(ev, tickerState) {
     }
 }
 
-// Export functions to be used by other modules
+// utils.js
+
+/**
+ * Formats a single event into a line for the recap message.
+ * @param {object} ev - The raw event object.
+ * @param {object} tickerState - The state object for the ticker.
+ * @returns {string} - The formatted recap line string.
+ */
+function formatRecapEventLine(ev, tickerState) {
+    const eventInfo = EVENT_MAP[ev.event] || { label: `Unbekanntes Event ${ev.event}`, emoji: "📢" };
+    const homeTeamName = tickerState.teamNames ? tickerState.teamNames.home : 'Heim';
+    const guestTeamName = tickerState.teamNames ? tickerState.teamNames.guest : 'Gast';
+    const team = ev.teamHome ? homeTeamName : guestTeamName;
+    const time = ev.second ? formatTimeFromSeconds(ev.second) : '--:--';
+    const abbreviatedPlayer = abbreviatePlayerName(ev.personFirstname, ev.personLastname);
+
+    let scoreStr = " ".repeat(7); // Placeholder for alignment
+    let eventStr = `${eventInfo.emoji} ${eventInfo.label}`;
+    let playerStr = abbreviatedPlayer || "";
+    let teamStr = ""; // Only used when necessary
+
+    switch (ev.event) {
+        case 4: // Tor
+        case 5: // 7-Meter Tor
+            if (ev.teamHome) {
+                scoreStr = `*${ev.pointsHome}*:${ev.pointsGuest}`;
+            } else {
+                scoreStr = `${ev.pointsHome}:*${ev.pointsGuest}*`;
+            }
+            eventStr = `${eventInfo.emoji} Tor`; // Use consistent label
+            break;
+        case 6: // 7-Meter Fehlwurf
+            eventStr = `${eventInfo.emoji} 7m-Fehlwurf`;
+            teamStr = team; // Specify team for clarity
+            break;
+        case 2: // Timeout Heim
+        case 3: // Timeout Gast
+            eventStr = `${eventInfo.emoji} Timeout`;
+            teamStr = team; // Specify team
+            break;
+        case 8: // Zeitstrafe
+        case 9: // Gelbe Karte
+        case 11: // Rote Karte
+             teamStr = `(*${team}*)`; // Team in parentheses for player
+             if (!abbreviatedPlayer) {
+                 playerStr = team; // If no player, show team name here instead
+                 teamStr = "";
+             }
+            break;
+        // Ignored events (shouldn't be in recapEvents array, but handle defensively)
+        case 0: case 1: case 15: case 17: case 14: case 16:
+             return ""; // Return empty string if somehow an ignored event gets here
+
+        default: // Fallback for unknown events
+             eventStr = `${eventInfo.emoji} ${eventInfo.label}`;
+             break;
+    }
+
+    // Combine parts, ensuring some alignment (may vary slightly on phones)
+    // Format: SCORE | EVENT | PLAYER | TEAM | TIME
+    return `${scoreStr.padEnd(7)} | ${eventStr.padEnd(15)} | ${playerStr.padEnd(15)} | ${teamStr.padEnd(15)} | (${time})`;
+}
+
 module.exports = {
     loadSeenTickers,
     saveSeenTickers,
     formatEvent,
     loadScheduledTickers,
-    saveScheduledTickers
+    saveScheduledTickers,
+    formatRecapEventLine 
 };

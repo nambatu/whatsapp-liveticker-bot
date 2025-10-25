@@ -8,7 +8,7 @@ const EVENT_MAP = {
     4: { label: "Tor", emoji: "⚽" },
     5: { label: "7-Meter Tor", emoji: "🎯" },
     6: { label: "7-Meter Fehlwurf", emoji: "❌" },
-    8: { label: "Zeitstrafe", emoji: "⛔" },
+    8: { label: "Zeitstrafe", emoji: "✌🏼" },
     9: { label: "Gelbe Karte", emoji: "🟨" },
     11: { label: "Rote Karte", emoji: "🟥" },
     14: { label: "Abpfiff (Halbzeit oder Spielende)", emoji: "⏸️" },
