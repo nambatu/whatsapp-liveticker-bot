@@ -22,11 +22,6 @@ const client = new Client({
         headless: true, // Run the underlying browser without a visible window
         args: ['--no-sandbox', '--disable-setuid-sandbox'], // Necessary arguments for running on Linux/Raspberry Pi
         executablePath: '/usr/bin/chromium' // Specify path to Chromium on Raspberry Pi OS
-    },
-    // Stabilizes connection by using a specific remote version of WhatsApp Web
-    webVersionCache: {
-        type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
     }
 });
 
