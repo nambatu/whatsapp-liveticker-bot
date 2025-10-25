@@ -498,7 +498,7 @@ async function processEvents(data, tickerState, chatId) {
 
             // Send the final "Thank you" message after a short delay
             setTimeout(async () => {
-                const finalMessage = "Vielen Dank fürs Mitfiebern! 🥳\n\nDen Quellcode für diesen Bot könnt ihr hier einsehen:\nhttps://github.com/nambatu/whatsapp-liveticker-bot/\n\nFalls ihr mich unterstützen wollt, könnt ihr das gerne hier tun:\npaypal.me/julianlangschwert";
+                const finalMessage = "Vielen Dank fürs Mitfiebern! 🥳\n\nDen Quellcode für diesen Bot könnt ihr hier einsehen:\nhttps://github.com/nambatu/whatsapp-liveticker-bot/";
                 try { await client.sendMessage(chatId, finalMessage); }
                 catch (e) { console.error(`[${chatId}] Fehler beim Senden der Abschlussnachricht: `, e); }
             }, 2000); // 2 second delay
