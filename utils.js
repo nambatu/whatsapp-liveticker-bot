@@ -295,7 +295,6 @@ function formatRecapEventLine(ev, tickerState) {
         case 5: // 7-Meter Tor
             if (ev.teamHome) { scoreStr = `*${ev.pointsHome}*:${ev.pointsGuest}`; }
             else { scoreStr = `${ev.pointsHome}:*${ev.pointsGuest}*`; }
-            currentEmoji = getGoalEmoji(tickerState); // Use dynamic emoji
             break;
         case 6: // 7-Meter Fehlwurf
             detailStr = abbreviatedPlayer ? `${abbreviatedPlayer} (*${team}*)` : `*${team}*`;
@@ -312,11 +311,11 @@ function formatRecapEventLine(ev, tickerState) {
 
         // --- CHANGE HERE: Add formatting for critical events in recap ---
         case 15: // Spielbeginn
-            return `* ${currentEmoji} (${time}) | *Das Spiel hat begonnen!*`;
+            return `* ${currentEmoji} ${time} | *Das Spiel hat begonnen!*`;
         case 14: // Halbzeit
-            return `* ${currentEmoji} (${time}) | *Halbzeit* | *${scoreStr}*`;
+            return `* ${currentEmoji} ${time} | *Halbzeit* | *${scoreStr}*`;
         case 16: // Spielende
-            return `* ${currentEmoji} (${time}) | *Spielende* | *${scoreStr}*`;
+            return `* ${currentEmoji} ${time} | *Spielende* | *${scoreStr}*`;
 
         // Ignored events
         case 0: case 1: case 17:
