@@ -49,7 +49,7 @@ async function scheduleTicker(meetingPageUrl, chatId, groupName, mode) { // Adde
         const page = await browser.newPage();
         await page.setRequestInterception(true);
         const apiCallPromise = new Promise((resolve, reject) => { /* Intercept API call */ });
-        await page.goto(meetingPageUrl, { waitUntil: 'networkidle0', timeout: 45000 });
+        await page.goto(meetingPageUrl, { waitUntil: 'networkidle0', timeout: 90000 });
         const capturedUrl = await apiCallPromise;
         await browser.close(); browser = null;
         const metaRes = await axios.get(capturedUrl);
