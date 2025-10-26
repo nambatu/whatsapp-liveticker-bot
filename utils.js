@@ -14,13 +14,17 @@ const { EVENT_MAP } = require('./config.js'); // Import event definitions
  */
 function loadSeenTickers(activeTickers, seenFilePath) {
     try {
-        const raw = fs.readFileSync(seenFilePath, 'utf8');
-        const data = JSON.parse(raw);
+        const raw = fs.readFileSync(seenFilePath, 'utf8'); // Read file content
+        const data = JSON.parse(raw); // Parse JSON data
         // Iterate through saved data (chatId -> array of seen IDs)
         for (const [chatId, seenArray] of Object.entries(data)) {
-            // If this chat isn't already in memory, add it with its seen events
+            // If this chat isn't already in memory (e.g., from schedule file), add it with its seen events
             if (!activeTickers.has(chatId)) {
-                activeTickers.set(chatId, { seen: new Set(seenArray) });
+                activeTickers.set(chatId, { seen: new Set(seenArray) }); // Use a Set for efficient lookups
+            } else {
+                // If ticker state already exists (e.g., loaded from schedule), just add the 'seen' set
+                const existingState = activeTickers.get(chatId);
+                existingState.seen = new Set(seenArray);
             }
         }
         console.log(`Daten für ${Object.keys(data).length} Ticker aus der Datei geladen.`);
@@ -38,13 +42,14 @@ function loadSeenTickers(activeTickers, seenFilePath) {
 function saveSeenTickers(activeTickers, seenFilePath) {
     try {
         const dataToSave = {};
-        // Convert the Set of seen IDs back to an array for JSON compatibility
+        // Iterate through all tickers currently in memory
         for (const [chatId, tickerState] of activeTickers.entries()) {
+            // Convert the Set of seen IDs back to an array for JSON compatibility
             if (tickerState.seen) {
                 dataToSave[chatId] = [...tickerState.seen];
             }
         }
-        // Write the data to the file, formatted for readability
+        // Write the data to the file, formatted with indentation for readability
         fs.writeFileSync(seenFilePath, JSON.stringify(dataToSave, null, 2), 'utf8');
     } catch (e) {
         console.error('Fehler beim Speichern der Ticker-Daten:', e);
@@ -61,8 +66,9 @@ function loadScheduledTickers(scheduleFilePath) {
         const raw = fs.readFileSync(scheduleFilePath, 'utf8');
         return JSON.parse(raw); // Return the parsed schedule object
     } catch (e) {
+        // Handle file not found or invalid JSON
         console.log('Keine gespeicherte Planungsdatei gefunden oder Fehler beim Lesen.');
-        return {}; // Return empty object if file is missing or invalid
+        return {}; // Return empty object to prevent errors in calling code
     }
 }
 
@@ -89,9 +95,9 @@ function saveScheduledTickers(scheduledTickers, scheduleFilePath) {
  * @returns {string} - The abbreviated name, or just the last name, or an empty string.
  */
 function abbreviatePlayerName(firstName, lastName) {
-    if (!lastName) return ''; // No last name, return empty
-    if (!firstName) return lastName; // No first name, return only last name
-    return `${firstName.charAt(0)}. ${lastName}`; // Return "F. Lastname"
+    if (!lastName) return ''; // No last name provided
+    if (!firstName) return lastName; // No first name provided
+    return `${firstName.charAt(0)}. ${lastName}`; // Combine first initial and last name
 }
 
 /**
@@ -100,108 +106,111 @@ function abbreviatePlayerName(firstName, lastName) {
  * @returns {string} - The formatted time string (e.g., "05:32").
  */
 function formatTimeFromSeconds(sec) {
-    const m = Math.floor(sec / 60); // Calculate minutes
+    const m = Math.floor(sec / 60); // Calculate whole minutes
     const s = sec % 60; // Calculate remaining seconds
-    // Pad with leading zeros if necessary
+    // Pad minutes and seconds with a leading zero if they are single digit
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
 /**
- * Formats a game event object into a user-friendly WhatsApp message string.
+ * Formats a game event object into a user-friendly WhatsApp message string for live mode.
  * Applies different layouts based on the event type (goal, penalty, timeout, etc.).
+ * Only includes the score line for goal events.
  * @param {object} ev - The event object from the API.
  * @param {object} tickerState - The state object for the current ticker (contains team names).
  * @returns {string} - The formatted message string, or an empty string for ignored events.
  */
 function formatEvent(ev, tickerState) {
-    // Get basic event info (emoji, label) from the map, provide fallback
+    // Get basic event info (emoji, label) from config, provide fallback for unknown types
     const eventInfo = EVENT_MAP[ev.event] || { label: `Unbekanntes Event ${ev.event}`, emoji: "📢" };
-    // Get full team names, provide fallbacks
+    // Get full team names from state, provide default fallbacks
     const homeTeamName = tickerState.teamNames ? tickerState.teamNames.home : 'Heim';
     const guestTeamName = tickerState.teamNames ? tickerState.teamNames.guest : 'Gast';
-    // Determine the acting team for this event
+    // Determine the acting team for this specific event
     const team = ev.teamHome ? homeTeamName : guestTeamName;
-    // Format time if available
+    // Format the game time if available
     const time = ev.second ? ` (${formatTimeFromSeconds(ev.second)})` : '';
-    // Get abbreviated player name
+    // Get the abbreviated player name
     const abbreviatedPlayer = abbreviatePlayerName(ev.personFirstname, ev.personLastname);
-    // Prepare player string snippet for goals/misses
+    // Prepare player string snippet specifically for goal messages
     const playerForGoal = abbreviatedPlayer ? ` durch ${abbreviatedPlayer}` : '';
 
-    // Main logic: Format message based on event type
+    // Main logic: Format message differently based on the event type
     switch (ev.event) {
         case 4: { // Tor (regular goal)
             let scoreLine;
-            // Create score line, bolding the score of the scoring team
+            // Create score line, bolding the score of the team that scored
             if (ev.teamHome) {
                 scoreLine = `${homeTeamName}  *${ev.pointsHome}*:${ev.pointsGuest}  ${guestTeamName}`;
             } else {
                 scoreLine = `${homeTeamName}  ${ev.pointsHome}:*${ev.pointsGuest}* ${guestTeamName}`;
             }
-            // Combine score line with event details
+            // Return score line + goal info
             return `${scoreLine}\n${eventInfo.emoji} Tor${playerForGoal}${time}`;
         }
         case 5: { // 7-Meter Tor
             let scoreLine;
-            // Create score line, bolding the score of the scoring team
+            // Create score line, bolding the score of the team that scored
             if (ev.teamHome) {
                 scoreLine = `${homeTeamName}  *${ev.pointsHome}*:${ev.pointsGuest}  ${guestTeamName}`;
             } else {
                 scoreLine = `${homeTeamName}  ${ev.pointsHome}:*${ev.pointsGuest}* ${guestTeamName}`;
             }
-            // Combine score line with event details
+            // Return score line + 7m goal info
             return `${scoreLine}\n${eventInfo.emoji} 7-Meter Tor${playerForGoal}${time}`;
         }
         case 6: // 7-Meter Fehlwurf
-             // No score update needed, just the action
+             // No score update, just the action. Explicitly name the team.
              return `${eventInfo.emoji} 7-Meter Fehlwurf für *${team}*${playerForGoal}${time}`;
-        
+
         case 2: // Timeout Heim
         case 3: // Timeout Gast
-            // No score update needed
+            // No score update, just the action. Explicitly name the team.
             return `${eventInfo.emoji} Timeout für *${team}*`;
-        
+
         case 8: // Zeitstrafe
         case 9: // Gelbe Karte
         case 11: // Rote Karte
-             // Format specifically for penalties/cards
+             // No score update. Format based on whether player name is known.
             if (abbreviatedPlayer) {
-                // If player known, format as "Action for Player (Team) (Time)"
+                // "Action for Player (Team) (Time)"
                 return `${eventInfo.emoji} ${eventInfo.label} für ${abbreviatedPlayer} (*${team}*)${time}`;
             } else {
-                // If player unknown (e.g., bench penalty), format as "Action for Team (Time)"
+                // "Action for Team (Time)" (e.g., bench penalty)
                 return `${eventInfo.emoji} ${eventInfo.label} für *${team}*${time}`;
             }
-        
+
         case 14: // Halbzeit
             // Summary event, show score
             return `⏸️ *Halbzeit*\n${homeTeamName}  *${ev.pointsHome}:${ev.pointsGuest}* ${guestTeamName}`;
-        
+
         case 16: // Spielende
             // Summary event, show score
             return `🏁 *Spielende*\n${homeTeamName}  *${ev.pointsHome}:${ev.pointsGuest}* ${guestTeamName}`;
-        
+
         case 15: // Spielbeginn
              // Simple start message
              return `▶️ *Das Spiel hat begonnen!*`;
-        
-        // Events to ignore (return empty string so no message is sent)
+
+        // Events to ignore entirely (return empty string -> no message sent)
         case 0: // Spiel geht weiter
         case 1: // Spiel unterbrochen
         case 17: // Teamaufstellung
             return ``;
-        
-        // Fallback for any other unknown event types
+
+        // Fallback for any other unknown or unhandled event types
         default:
-            return `${eventInfo.emoji} ${eventInfo.label}`; // Show basic info without score
+            // Show basic info without score
+            return `${eventInfo.emoji} ${eventInfo.label}`;
     }
 }
 
 /**
  * Formats a single event into a line for the recap message.
+ * Uses a more structured, tabular-like format.
  * @param {object} ev - The raw event object.
  * @param {object} tickerState - The state object for the ticker.
- * @returns {string} - The formatted recap line string.
+ * @returns {string} - The formatted recap line string, or empty string for ignored types.
  */
 function formatRecapEventLine(ev, tickerState) {
     const eventInfo = EVENT_MAP[ev.event] || { label: `Unbekanntes Event ${ev.event}`, emoji: "📢" };
@@ -211,58 +220,67 @@ function formatRecapEventLine(ev, tickerState) {
     const time = ev.second ? formatTimeFromSeconds(ev.second) : '--:--';
     const abbreviatedPlayer = abbreviatePlayerName(ev.personFirstname, ev.personLastname);
 
-    let scoreStr = " ".repeat(7); // Placeholder for alignment
-    let eventStr = `${eventInfo.emoji} ${eventInfo.label}`;
-    let playerStr = abbreviatedPlayer || "";
-    let teamStr = ""; // Only used when necessary
+    let scoreStr = " ".repeat(7); // Default empty space for score column alignment
+    let eventStr = `${eventInfo.emoji} ${eventInfo.label}`; // Default event string
+    let playerStr = abbreviatedPlayer || ""; // Player name or empty
+    let teamStr = ""; // Team name - only added when necessary for context
 
+    // Customize output based on event type
     switch (ev.event) {
         case 4: // Tor
         case 5: // 7-Meter Tor
+            // Format score with bolding for scoring team
             if (ev.teamHome) {
                 scoreStr = `*${ev.pointsHome}*:${ev.pointsGuest}`;
             } else {
                 scoreStr = `${ev.pointsHome}:*${ev.pointsGuest}*`;
             }
-            eventStr = `${eventInfo.emoji} Tor`; // Use consistent label
-            break;
+            eventStr = `${eventInfo.emoji} Tor`; // Use consistent "Tor" label
+            break; // Player name is already set
+
         case 6: // 7-Meter Fehlwurf
             eventStr = `${eventInfo.emoji} 7m-Fehlwurf`;
-            teamStr = team; // Specify team for clarity
+            teamStr = team; // Add team name for clarity
             break;
+
         case 2: // Timeout Heim
         case 3: // Timeout Gast
             eventStr = `${eventInfo.emoji} Timeout`;
-            teamStr = team; // Specify team
+            teamStr = team; // Add team name
             break;
+
         case 8: // Zeitstrafe
         case 9: // Gelbe Karte
         case 11: // Rote Karte
-             teamStr = `(*${team}*)`; // Team in parentheses for player
-             if (!abbreviatedPlayer) {
-                 playerStr = team; // If no player, show team name here instead
-                 teamStr = "";
+             // Format specifically for penalties/cards
+             teamStr = `(*${team}*)`; // Team in parentheses next to player
+             if (!abbreviatedPlayer) { // If no player name (e.g., bench)
+                 playerStr = team; // Put team name in player column
+                 teamStr = ""; // Clear team column
              }
             break;
-        // Ignored events (shouldn't be in recapEvents array, but handle defensively)
-        case 0: case 1: case 15: case 17: case 14: case 16:
-             return ""; // Return empty string if somehow an ignored event gets here
 
-        default: // Fallback for unknown events
+        // Ignored events (should already be filtered by processEvents, but handle defensively)
+        case 0: case 1: case 15: case 17: case 14: case 16:
+             return ""; // Return empty string
+
+        default: // Fallback for any other event types
              eventStr = `${eventInfo.emoji} ${eventInfo.label}`;
-             break;
+             break; // Keep default player/team strings
     }
 
-    // Combine parts, ensuring some alignment (may vary slightly on phones)
+    // Combine parts into a formatted line using padding for basic alignment
+    // Note: Exact alignment depends on font and device width in WhatsApp
     // Format: SCORE | EVENT | PLAYER | TEAM | TIME
     return `${scoreStr.padEnd(7)} | ${eventStr.padEnd(15)} | ${playerStr.padEnd(15)} | ${teamStr.padEnd(15)} | (${time})`;
 }
 
+// Export all functions needed by other modules
 module.exports = {
     loadSeenTickers,
     saveSeenTickers,
-    formatEvent,
+    formatEvent, // For live mode and critical events
     loadScheduledTickers,
     saveScheduledTickers,
-    formatRecapEventLine 
+    formatRecapEventLine // For recap mode messages
 };
