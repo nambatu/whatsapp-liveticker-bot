@@ -13,7 +13,7 @@ let activeTickers, jobQueue, client, seenFilePath, scheduleFilePath;
 // --- WORKER POOL CONFIG ---
 let lastPolledIndex = -1; // Tracks the index of the last ticker polled by the scheduler (for round-robin)
 let activeWorkers = 0; // Counts currently running Puppeteer instances
-const MAX_WORKERS = 4; // Tunable: Maximum number of concurrent Puppeteer instances allowed
+const MAX_WORKERS = 2; // Tunable: Maximum number of concurrent Puppeteer instances allowed
 const PRE_GAME_START_MINUTES = 5; // How many minutes before scheduled start time to begin active polling
 const RECAP_INTERVAL_MINUTES = 5; // Frequency of sending recap messages in 'recap' mode
 
@@ -471,7 +471,7 @@ async function processEvents(data, tickerState, chatId) {
 
             // --- Send Final Bot Message ---
             setTimeout(async () => {
-                const finalMessage = "Vielen Dank fürs Mitfiebern! 🥳\n\nDen Quellcode für diesen Bot könnt ihr hier einsehen:\nhttps://github.com/nambatu/whatsapp-liveticker-bot/\n\nFalls ihr mich unterstützen wollt, könnt ihr das gerne hier tun:\npaypal.me/julianlangschwert";
+                const finalMessage = "Vielen Dank fürs Mitfiebern! 🥳\n\nDen Quellcode für diesen Bot könnt ihr hier einsehen:\nhttps://github.com/nambatu/whatsapp-liveticker-bot/";
                 try { await client.sendMessage(chatId, finalMessage); }
                 catch (e) { console.error(`[${chatId}] Fehler beim Senden der Abschlussnachricht: `, e); }
             }, 4000); // 4s delay
