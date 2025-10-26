@@ -84,7 +84,7 @@ async function queueTickerScheduling(meetingPageUrl, chatId, groupName, mode) {
  * Called either after a schedule timer fires, or directly by the worker if game already started.
  * @param {string} chatId - The WhatsApp chat ID.
  */
-function beginActualPolling(chatId) {
+async function beginActualPolling(chatId) {
     const tickerState = activeTickers.get(chatId);
     // Safety checks
     if (!tickerState) {
@@ -113,6 +113,26 @@ function beginActualPolling(chatId) {
         saveScheduledTickers(currentSchedule, scheduleFilePath); // ** Save the updated file **
         console.log(`[${chatId}] Aus Planungsdatei entfernt.`);
     }
+
+    // --- Send Emoji Legend (Only in Recap Mode) ---
+    if (tickerState.mode === 'recap') { // Check the mode
+        try {
+            let legendMessage = "ℹ️ *Ticker-Legende:*\n";
+            // Iterate through EVENT_MAP to build the legend
+            for (const key in EVENT_MAP) {
+                // Ensure EVENT_MAP is accessible here, might need import if moved
+                const eventDetails = EVENT_MAP[key]; // Assuming EVENT_MAP is accessible
+                // Include only relevant, user-facing events
+                if ([0, 1, 2, 15, 16, 17].includes(parseInt(key))) continue; // Skip internal/start events
+                legendMessage += `${eventDetails.emoji} = ${eventDetails.label}\n`;
+            }
+            await client.sendMessage(chatId, legendMessage.trim()); // Send the constructed legend
+            console.log(`[${chatId}] Emoji-Legende gesendet (Recap-Modus).`);
+        } catch (error) {
+            console.error(`[${chatId}] Fehler beim Senden der Legende:`, error);
+        }
+    }
+    // --- End Legend ---
 
     // Start the recap message timer ONLY if in recap mode
     if (tickerState.mode === 'recap') {
@@ -288,7 +308,7 @@ async function runWorker(job) {
             if (delay > 0) { // Still in future
                 console.log(`[${chatId}] Planungs-Job erfolgreich...`);
                 const modeDescriptionScheduled = (tickerState.mode === 'recap') ? `im Recap-Modus (${RECAP_INTERVAL_MINUTES}-Minuten-Zusammenfassungen)` : "mit Live-Updates";
-await client.sendMessage(chatId, `✅ Ticker für *${teamNames.home}* vs *${teamNames.guest}* ist geplant (${modeDescriptionScheduled}) und startet automatisch am ${startDateLocale} um ca. ${startTimeLocale} Uhr.`);                tickerState.isPolling = false; tickerState.isScheduled = true;
+                await client.sendMessage(chatId, `✅ Ticker für *${teamNames.home}* vs *${teamNames.guest}* ist geplant (${modeDescriptionScheduled}) und startet automatisch am ${startDateLocale} um ca. ${startTimeLocale} Uhr.`);                tickerState.isPolling = false; tickerState.isScheduled = true;
                 const currentSchedule = loadScheduledTickers(scheduleFilePath);
                 // ** Save schedule data **
                 currentSchedule[chatId] = {

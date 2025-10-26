@@ -220,7 +220,6 @@ function formatRecapEventLine(ev, tickerState) {
     const abbreviatedPlayer = abbreviatePlayerName(ev.personFirstname, ev.personLastname);
 
     let scoreStr = `${ev.pointsHome}:${ev.pointsGuest}`; // Score is always shown
-    let eventLabel = eventInfo.label;
     let detailStr = abbreviatedPlayer || ""; // Default detail is player
 
     switch (ev.event) {
@@ -232,36 +231,36 @@ function formatRecapEventLine(ev, tickerState) {
             } else {
                 scoreStr = `${ev.pointsHome}:*${ev.pointsGuest}*`;
             }
-            eventLabel = "Tor"; // Use consistent label
-            if (ev.event === 5) eventLabel = "7m-Tor";
-            break;
+            break; // Player name is already set as detailStr
+
         case 6: // 7-Meter Fehlwurf
-            eventLabel = "7m-Fehlwurf";
             // Add team to detail string if player exists, otherwise detail is team
             detailStr = abbreviatedPlayer ? `${abbreviatedPlayer} (*${team}*)` : `*${team}*`;
             break;
+
         case 2: // Timeout Heim
         case 3: // Timeout Gast
-            eventLabel = "Timeout";
             detailStr = `*${team}*`; // Detail is just the team
             break;
+
         case 8: // Zeitstrafe
         case 9: // Gelbe Karte
         case 11: // Rote Karte
              // Add team in parentheses if player exists, otherwise detail is team
             detailStr = abbreviatedPlayer ? `${abbreviatedPlayer} (*${team}*)` : `*${team}*`;
             break;
+
         // Ignored events
         case 0: case 1: case 15: case 17: case 14: case 16:
              return ""; // Skip these lines entirely
 
         default: // Fallback
-             detailStr = ""; // No details for unknown events
+             detailStr = eventInfo.label; // For unknown events, show the label as detail
              break;
     }
 
-    // Construct the line: * Emoji (Time) | Event | Score | Detail
-    return `* ${eventInfo.emoji} ${time} | ${scoreStr} | ${eventLabel} | ${detailStr}`;
+    // Construct the line: * Emoji (Time) | Score | Detail
+    return `* ${eventInfo.emoji} (${time}) | ${scoreStr} | ${detailStr}`;
 }
 
 // Export all functions needed by other modules

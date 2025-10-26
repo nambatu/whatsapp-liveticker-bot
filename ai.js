@@ -103,7 +103,7 @@ async function generateGameSummary(events, teamNames, groupName, halftimeLength)
     2.  Verwende die Statistiken für spitze Kommentare. (z.B. "Mit ${gameStats.guestPenalties} Zeitstrafen hat sich Team Gast das Leben selbst schwer gemacht." oder "Am Ende hat die Kaltschnäuzigkeit vom 7-Meter-Punkt den Unterschied gemacht.")
     3.  Sei kreativ, vermeide Standardfloskeln. Gib dem Kommentar Persönlichkeit! Vermeide Sachen aus den Daten zu interpretieren die nicht daraus zu erschließen sind, bleibe lieber bei den Fakten als eine "zu offensive Abwehr" zu erfinden. 
     4.  Falls der Gruppenname keinem Team zuzuordnen ist, ignoriere ihn und erwähne ihn nirgendwo. Falls sich die Gruppe aber definitiv einem Team zuordnen lässt, unterstütze das Team mit Herzblut und roaste auch gerne das gegnerische Team.
-    5.  Falls Julian Langschwert oder Simon Goßmann gespielt hat, lobe ihn sarkastisch bis in den Himmel und erwähne immer seine erzielten Tore.
+    5.  Falls Julian Langschwert, Tiard Brinkmann und/oder Simon Goßmann gespielt hat, lobe ihn sarkastisch bis in den Himmel.
 
     Deine Zusammenfassung (nur Überschrift und Text, ohne "Zusammenfassung:"):`;
 
