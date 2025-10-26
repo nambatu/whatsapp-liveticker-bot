@@ -206,11 +206,10 @@ function formatEvent(ev, tickerState) {
 }
 
 /**
- * Formats a single event into a line for the recap message.
- * Uses a more structured, tabular-like format.
+ * Formats a single event into a line for the recap message using bullet points and separators.
  * @param {object} ev - The raw event object.
  * @param {object} tickerState - The state object for the ticker.
- * @returns {string} - The formatted recap line string, or empty string for ignored types.
+ * @returns {string} - The formatted recap line string.
  */
 function formatRecapEventLine(ev, tickerState) {
     const eventInfo = EVENT_MAP[ev.event] || { label: `Unbekanntes Event ${ev.event}`, emoji: "📢" };
@@ -220,59 +219,49 @@ function formatRecapEventLine(ev, tickerState) {
     const time = ev.second ? formatTimeFromSeconds(ev.second) : '--:--';
     const abbreviatedPlayer = abbreviatePlayerName(ev.personFirstname, ev.personLastname);
 
-    let scoreStr = " ".repeat(7); // Default empty space for score column alignment
-    let eventStr = `${eventInfo.emoji} ${eventInfo.label}`; // Default event string
-    let playerStr = abbreviatedPlayer || ""; // Player name or empty
-    let teamStr = ""; // Team name - only added when necessary for context
+    let scoreStr = `${ev.pointsHome}:${ev.pointsGuest}`; // Score is always shown
+    let eventLabel = eventInfo.label;
+    let detailStr = abbreviatedPlayer || ""; // Default detail is player
 
-    // Customize output based on event type
     switch (ev.event) {
         case 4: // Tor
         case 5: // 7-Meter Tor
-            // Format score with bolding for scoring team
+            // Bold the relevant part of the score
             if (ev.teamHome) {
                 scoreStr = `*${ev.pointsHome}*:${ev.pointsGuest}`;
             } else {
                 scoreStr = `${ev.pointsHome}:*${ev.pointsGuest}*`;
             }
-            eventStr = `${eventInfo.emoji} Tor`; // Use consistent "Tor" label
-            break; // Player name is already set
-
-        case 6: // 7-Meter Fehlwurf
-            eventStr = `${eventInfo.emoji} 7m-Fehlwurf`;
-            teamStr = team; // Add team name for clarity
+            eventLabel = "Tor"; // Use consistent label
+            if (ev.event === 5) eventLabel = "7m-Tor";
             break;
-
+        case 6: // 7-Meter Fehlwurf
+            eventLabel = "7m-Fehlwurf";
+            // Add team to detail string if player exists, otherwise detail is team
+            detailStr = abbreviatedPlayer ? `${abbreviatedPlayer} (*${team}*)` : `*${team}*`;
+            break;
         case 2: // Timeout Heim
         case 3: // Timeout Gast
-            eventStr = `${eventInfo.emoji} Timeout`;
-            teamStr = team; // Add team name
+            eventLabel = "Timeout";
+            detailStr = `*${team}*`; // Detail is just the team
             break;
-
         case 8: // Zeitstrafe
         case 9: // Gelbe Karte
         case 11: // Rote Karte
-             // Format specifically for penalties/cards
-             teamStr = `(*${team}*)`; // Team in parentheses next to player
-             if (!abbreviatedPlayer) { // If no player name (e.g., bench)
-                 playerStr = team; // Put team name in player column
-                 teamStr = ""; // Clear team column
-             }
+             // Add team in parentheses if player exists, otherwise detail is team
+            detailStr = abbreviatedPlayer ? `${abbreviatedPlayer} (*${team}*)` : `*${team}*`;
             break;
-
-        // Ignored events (should already be filtered by processEvents, but handle defensively)
+        // Ignored events
         case 0: case 1: case 15: case 17: case 14: case 16:
-             return ""; // Return empty string
+             return ""; // Skip these lines entirely
 
-        default: // Fallback for any other event types
-             eventStr = `${eventInfo.emoji} ${eventInfo.label}`;
-             break; // Keep default player/team strings
+        default: // Fallback
+             detailStr = ""; // No details for unknown events
+             break;
     }
 
-    // Combine parts into a formatted line using padding for basic alignment
-    // Note: Exact alignment depends on font and device width in WhatsApp
-    // Format: SCORE | EVENT | PLAYER | TEAM | TIME
-    return `${scoreStr.padEnd(7)} | ${eventStr.padEnd(15)} | ${playerStr.padEnd(15)} | ${teamStr.padEnd(15)} | (${time})`;
+    // Construct the line: * Emoji (Time) | Event | Score | Detail
+    return `* ${eventInfo.emoji} ${time} | ${scoreStr} | ${eventLabel} | ${detailStr}`;
 }
 
 // Export all functions needed by other modules

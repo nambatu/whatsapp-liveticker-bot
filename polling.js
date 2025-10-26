@@ -397,7 +397,7 @@ async function processEvents(data, tickerState, chatId) {
             try {
                 const gameStats = extractGameStats(events, tickerState.teamNames);
                 const statsMessage = `📊 *Statistiken zum Spiel:*\n` +
-                     `-----------------------------------\n` +
+                     `\n` +
                      `*Topscorer (${tickerState.teamNames.home}):* ${gameStats.homeTopScorer}\n` +
                      `*Topscorer (${tickerState.teamNames.guest}):* ${gameStats.guestTopScorer}\n` +
                      `*7-Meter (${tickerState.teamNames.home}):* ${gameStats.homeSevenMeters}\n` +
