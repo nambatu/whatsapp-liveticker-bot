@@ -308,15 +308,12 @@ function formatRecapEventLine(ev, tickerState) {
         case 11: // Rote Karte
             detailStr = abbreviatedPlayer ? `${abbreviatedPlayer} (*${team}*)` : `*${team}*`;
             break;
-
-        // --- CHANGE HERE: Add formatting for critical events in recap ---
         case 15: // Spielbeginn
-            return `* ${currentEmoji} ${time} | *Das Spiel hat begonnen!*`;
+            return `${currentEmoji} ${time} | *Das Spiel hat begonnen!*`;
         case 14: // Halbzeit
-            return `* ${currentEmoji} ${time} | *Halbzeit* | *${scoreStr}*`;
+            return `${currentEmoji} ${time} | *Halbzeit* | *${scoreStr}*`;
         case 16: // Spielende
-            return `* ${currentEmoji} ${time} | *Spielende* | *${scoreStr}*`;
-
+            return `${currentEmoji} ${time} | *Spielende* | *${scoreStr}*`;
         // Ignored events
         case 0: case 1: case 17:
              return "";
