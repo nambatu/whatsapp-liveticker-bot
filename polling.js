@@ -372,6 +372,10 @@ async function runWorker(job) {
 
 /**
  * Processes events, handles modes, calls AI, sends final stats, schedules cleanup.
+ * @param {object} data - The API response containing the events array.
+ * @param {object} tickerState - The state object for the specific ticker.
+ * @param {string} chatId - The WhatsApp chat ID.
+ * @returns {boolean} - True if new, unseen events were processed, false otherwise.
  */
 async function processEvents(data, tickerState, chatId) {
     if (!data || !Array.isArray(data.events)) return false;
@@ -381,54 +385,77 @@ async function processEvents(data, tickerState, chatId) {
     for (const ev of events) {
         if (tickerState.seen.has(ev.idx)) continue;
 
-        const msg = formatEvent(ev, tickerState);
+        // Mark as seen immediately
         tickerState.seen.add(ev.idx);
         newUnseenEventsProcessed = true;
 
-        if (msg) {
-             try { // Wrap message sending in try...catch
-                if (ev.event === 14 || ev.event === 16 || ev.event === 15) { // Critical events
-                    console.log(`[${chatId}] Sende kritisches Event sofort:`, msg);
-                    await client.sendMessage(chatId, msg);
-                } else if (tickerState.mode === 'live') { // Live mode
-                    console.log(`[${chatId}] Sende neues Event (Live):`, msg);
-                    await client.sendMessage(chatId, msg);
-                } else if (tickerState.mode === 'recap') { // Recap mode
-                    console.log(`[${chatId}] Speichere Event-Objekt für Recap (ID: ${ev.idx}, Typ: ${ev.event})`);
-                    tickerState.recapEvents = tickerState.recapEvents || [];
-                    tickerState.recapEvents.push(ev);
-                }
-             } catch (sendError) {
-                 console.error(`[${chatId}] Fehler beim Senden der Nachricht für Event ${ev.idx}:`, sendError);
-             }
+        // Format a message *only* for live mode.
+        // In recap mode, msg will be formatted later.
+        let msg = "";
+        if (tickerState.mode === 'live') {
+            msg = formatEvent(ev, tickerState);
         }
 
-        if (ev.event === 16) { // Game End
-            console.log(`[${chatId}] Spielende-Event empfangen...`);
+        // --- Handle Sending / Storing based on mode ---
+        
+        // For Live Mode, send message if it's not empty
+        if (tickerState.mode === 'live' && msg) {
+            try {
+                console.log(`[${chatId}] Sende neues Event (Live):`, msg);
+                await client.sendMessage(chatId, msg);
+            } catch (sendError) {
+                console.error(`[${chatId}] Fehler beim Senden der Nachricht für Event ${ev.idx}:`, sendError);
+            }
+        }
+        // For Recap Mode, just store the event object
+        else if (tickerState.mode === 'recap') {
+            // We store all events (except ignored ones) to build the recap
+            const ignoredEvents = [0, 1, 17];
+            if (!ignoredEvents.includes(ev.event)) {
+                console.log(`[${chatId}] Speichere Event-Objekt für Recap (ID: ${ev.idx}, Typ: ${ev.event})`);
+                tickerState.recapEvents = tickerState.recapEvents || [];
+                tickerState.recapEvents.push(ev);
+            }
+        }
+        
+        // --- Handle Critical Events (AFTER processing them) ---
+        const isCriticalEvent = (ev.event === 14 || ev.event === 16 || ev.event === 15);
+        if (isCriticalEvent && tickerState.mode === 'recap') {
+            // If it's a critical event in recap mode, send the buffer *now*
+            console.log(`[${chatId}] Kritisches Event (${ev.event}) erkannt, sende Recap sofort.`);
+            await sendRecapMessage(chatId); // This sends and clears the buffer
+        }
+
+
+        // --- Handle Game End ---
+        if (ev.event === 16) {
+            console.log(`[${chatId}] Spielende-Event empfangen. Ticker wird gestoppt.`);
             tickerState.isPolling = false;
             if (tickerState.recapIntervalId) clearInterval(tickerState.recapIntervalId);
 
-            if (tickerState.mode === 'recap' && tickerState.recapEvents && tickerState.recapEvents.length > 0) {
-                 await sendRecapMessage(chatId);
-            }
+            // Note: The final recap (including event 16) was already sent by the logic above.
+            // We just continue to the final stats, AI, and cleanup messages.
 
-            const index = jobQueue.findIndex(job => job.chatId === chatId); if (index > -1) jobQueue.splice(index, 1);
+            // Remove pending job
+            const index = jobQueue.findIndex(job => job.chatId === chatId);
+            if (index > -1) jobQueue.splice(index, 1);
 
             // --- Send Final Stats ---
             try {
                 const gameStats = extractGameStats(events, tickerState.teamNames);
                 const statsMessage = `📊 *Statistiken zum Spiel:*\n` +
-                     `\n` +
-                     `*Topscorer (${tickerState.teamNames.home}):* ${gameStats.homeTopScorer}\n` +
-                     `*Topscorer (${tickerState.teamNames.guest}):* ${gameStats.guestTopScorer}\n` +
-                     `*7-Meter (${tickerState.teamNames.home}):* ${gameStats.homeSevenMeters}\n` +
-                     `*7-Meter (${tickerState.teamNames.guest}):* ${gameStats.guestSevenMeters}\n` +
-                     `*Zeitstrafen (${tickerState.teamNames.home}):* ${gameStats.homePenalties}\n` +
-                     `*Zeitstrafen (${tickerState.teamNames.guest}):* ${gameStats.guestPenalties}`;                
-                     setTimeout(async () => {
+                                     `-----------------------------------\n` +
+                                     `*Topscorer (${tickerState.teamNames.home}):* ${gameStats.homeTopScorer}\n` +
+                                     `*Topscorer (${tickerState.teamNames.guest}):* ${gameStats.guestTopScorer}\n` +
+                                     `*7-Meter (${tickerState.teamNames.home}):* ${gameStats.homeSevenMeters}\n` +
+                                     `*7-Meter (${tickerState.teamNames.guest}):* ${gameStats.guestSevenMeters}\n` +
+                                     `*Zeitstrafen (${tickerState.teamNames.home}):* ${gameStats.homePenalties}\n` +
+                                     `*Zeitstrafen (${tickerState.teamNames.guest}):* ${gameStats.guestPenalties}`;
+                
+                setTimeout(async () => {
                      try { await client.sendMessage(chatId, statsMessage); }
                      catch(e) { console.error(`[${chatId}] Fehler beim Senden der Spielstatistiken:`, e); }
-                }, 1000);
+                }, 1000); // 1s delay
             } catch (e) { console.error(`[${chatId}] Fehler beim Erstellen der Spielstatistiken:`, e); }
 
             // --- Send AI Summary ---
@@ -439,15 +466,15 @@ async function processEvents(data, tickerState, chatId) {
                          try { await client.sendMessage(chatId, summary); }
                          catch(e) { console.error(`[${chatId}] Fehler beim Senden der AI-Zusammenfassung:`, e); }
                      }
-                }, 2000); // Delay AI summary slightly after stats
+                }, 2000); // 2s delay
             } catch (e) { console.error(`[${chatId}] Fehler beim Generieren der AI-Zusammenfassung:`, e); }
 
             // --- Send Final Bot Message ---
             setTimeout(async () => {
-            const finalMessage = "Vielen Dank fürs Mitfiebern! 🥳\n\nDen Quellcode für diesen Bot könnt ihr hier einsehen:\nhttps://github.com/nambatu/whatsapp-liveticker-bot/";                
-            try { await client.sendMessage(chatId, finalMessage); }
+                const finalMessage = "Vielen Dank fürs Mitfiebern! 🥳\n\nDen Quellcode für diesen Bot könnt ihr hier einsehen:\nhttps://github.com/nambatu/whatsapp-liveticker-bot/\n\nFalls ihr mich unterstützen wollt, könnt ihr das gerne hier tun:\npaypal.me/julianlangschwert";
+                try { await client.sendMessage(chatId, finalMessage); }
                 catch (e) { console.error(`[${chatId}] Fehler beim Senden der Abschlussnachricht: `, e); }
-            }, 4000); // Delay final message after AI summary
+            }, 4000); // 4s delay
 
             // --- Schedule Cleanup ---
             setTimeout(() => {
@@ -457,7 +484,7 @@ async function processEvents(data, tickerState, chatId) {
                     console.log(`[${chatId}] Ticker-Daten automatisch bereinigt.`);
                 }
             }, 3600000);
-            break;
+            break; // Stop processing events
         }
     }
     return newUnseenEventsProcessed;
