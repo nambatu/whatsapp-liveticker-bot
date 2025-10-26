@@ -13,7 +13,7 @@ let activeTickers, jobQueue, client, seenFilePath, scheduleFilePath;
 // --- WORKER POOL CONFIG ---
 let lastPolledIndex = -1; // Tracks the index of the last ticker polled by the scheduler (for round-robin)
 let activeWorkers = 0; // Counts currently running Puppeteer instances
-const MAX_WORKERS = 2; // Tunable: Maximum number of concurrent Puppeteer instances allowed
+const MAX_WORKERS = 1; // Tunable: Maximum number of concurrent Puppeteer instances allowed
 const PRE_GAME_START_MINUTES = 5; // How many minutes before scheduled start time to begin active polling
 const RECAP_INTERVAL_MINUTES = 5; // Frequency of sending recap messages in 'recap' mode
 
@@ -284,9 +284,9 @@ async function runWorker(job) {
                  if (request.url().includes('/nuScoreLiveRestBackend/api/1/meeting/')) resolve(request.url());
                  request.continue();
              });
-             setTimeout(() => reject(new Error('API-Request wurde nicht innerhalb von 30s abgefangen.')), 30000);
+             setTimeout(() => reject(new Error('API-Request wurde nicht innerhalb von 120s abgefangen.')), 12000);
         });
-        await page.goto(job.meetingPageUrl, { waitUntil: 'networkidle0', timeout: 45000 });
+        await page.goto(job.meetingPageUrl, { waitUntil: 'networkidle0', timeout: 90000 });
         const capturedUrl = await apiCallPromise;
         await browser.close(); browser = null; // Close browser
 
