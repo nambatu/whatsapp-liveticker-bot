@@ -1,10 +1,11 @@
-// polling.js - Corrected and Commented
+// polling.js
 const axios = require('axios');
 const puppeteer = require('puppeteer');
 // Import utility functions, including those for saving/loading schedule data and formatting
 const { saveSeenTickers, formatEvent, saveScheduledTickers, loadScheduledTickers, formatRecapEventLine } = require('./utils.js');
-// Import AI functions
-const { generateGameSummary, extractGameStats } = require('./ai.js');
+const { generateGameSummary, extractGameStats } = require('./ai.js'); // Import AI functions
+const { EVENT_MAP } = require('./config.js'); // Import event definitions
+
 
 // --- SHARED STATE (Initialized by app.js) ---
 let activeTickers, jobQueue, client, seenFilePath, scheduleFilePath;
