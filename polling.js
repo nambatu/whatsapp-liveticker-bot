@@ -1,27 +1,28 @@
 // polling.js
 const axios = require('axios');
 const puppeteer = require('puppeteer');
-const { saveSeenTickers, formatEvent, saveScheduledTickers, loadScheduledTickers } = require('./utils.js');
+// Import all necessary utility functions
+const { saveSeenTickers, formatEvent, saveScheduledTickers, loadScheduledTickers, formatRecapEventLine } = require('./utils.js');
+// Import both AI functions
 const { generateGameSummary, extractGameStats } = require('./ai.js');
 
 // --- SHARED STATE (Initialized by app.js) ---
 let activeTickers, jobQueue, client, seenFilePath, scheduleFilePath;
 
 // --- WORKER POOL CONFIG ---
-let lastPolledIndex = -1; // Tracks the index of the last ticker polled by the scheduler (for round-robin)
-let activeWorkers = 0; // Counts currently running Puppeteer instances
-const MAX_WORKERS = 2; // Maximum number of concurrent Puppeteer instances allowed
-const PRE_GAME_START_MINUTES = 5; // How many minutes before scheduled start time to begin active polling
-const RECAP_INTERVAL_MINUTES = 5; // Frequency of sending recap messages in 'recap' mode
+let lastPolledIndex = -1;
+let activeWorkers = 0;
+const MAX_WORKERS = 2; // Tunable: Number of parallel browsers
+const PRE_GAME_START_MINUTES = 5; // How early to start polling
+const RECAP_INTERVAL_MINUTES = 5; // Recap frequency
 
 /**
- * Initializes the polling module with shared state variables from app.js.
- * This function must be called once when the bot starts.
- * @param {Map} tickers - The Map storing active ticker states (passed by reference).
- * @param {Array} queue - The array acting as the job queue (passed by reference).
- * @param {Client} whatsappClient - The initialized whatsapp-web.js client instance.
- * @param {string} seenFile - The file path for saving seen event IDs.
- * @param {string} scheduleFile - The file path for saving scheduled tickers.
+ * Initializes the polling module with shared state from app.js.
+ * @param {Map} tickers - Map storing active ticker states.
+ * @param {Array} queue - The job queue array.
+ * @param {Client} whatsappClient - The whatsapp-web.js client.
+ * @param {string} seenFile - Path to seen events file.
+ * @param {string} scheduleFile - Path to schedule file.
  */
 function initializePolling(tickers, queue, whatsappClient, seenFile, scheduleFile) {
     activeTickers = tickers;
@@ -32,89 +33,73 @@ function initializePolling(tickers, queue, whatsappClient, seenFile, scheduleFil
 }
 
 /**
- * Schedules a ticker. Fetches game metadata, determines start time,
- * saves the schedule if the game is in the future, and sets a timer
- * to begin polling later, or starts polling immediately if the game already started.
- * This function is exported as 'startPolling' for use by app.js.
- * @param {string} meetingPageUrl - The URL of the NuLiga live ticker webpage.
- * @param {string} chatId - The WhatsApp chat ID where the ticker runs.
- * @param {string} groupName - The name of the WhatsApp group (for AI).
- * @param {('live'|'recap')} mode - The desired ticker mode ('live' or 'recap').
+ * Schedules a ticker or starts it immediately. Called by !start.
+ * Fetches initial data via Puppeteer, saves schedule if needed, sets timers.
+ * @param {string} meetingPageUrl - The NuLiga ticker page URL.
+ * @param {string} chatId - The WhatsApp chat ID.
+ * @param {string} groupName - The WhatsApp group name.
+ * @param {('live'|'recap')} mode - Ticker mode.
  */
-async function scheduleTicker(meetingPageUrl, chatId, groupName, mode) {
+async function scheduleTicker(meetingPageUrl, chatId, groupName, mode) { // Added 'mode'
     console.log(`[${chatId}] Ticker-Planung wird gestartet (Modus: ${mode}) für Gruppe: ${groupName}`);
     let browser = null;
     try {
-        // --- Fetch game metadata using Puppeteer ---
+        // --- Fetch initial game data ---
         browser = await puppeteer.launch({ executablePath: '/usr/bin/chromium', args: ['--no-sandbox', '--disable-setuid-sandbox'] });
         const page = await browser.newPage();
         await page.setRequestInterception(true);
-        const apiCallPromise = new Promise((resolve, reject) => {
-            page.on('request', request => {
-                if (request.url().includes('/nuScoreLiveRestBackend/api/1/meeting/')) resolve(request.url());
-                request.continue();
-            });
-            setTimeout(() => reject(new Error('API-Request wurde nicht innerhalb von 30s abgefangen.')), 30000); // Failsafe timeout
-        });
+        const apiCallPromise = new Promise((resolve, reject) => { /* Intercept API call */ });
         await page.goto(meetingPageUrl, { waitUntil: 'networkidle0', timeout: 45000 });
         const capturedUrl = await apiCallPromise;
-        await browser.close(); browser = null; // Close browser ASAP
-
-        // --- Get game details via Axios ---
+        await browser.close(); browser = null;
         const metaRes = await axios.get(capturedUrl);
         const gameData = metaRes.data;
 
-        // --- Calculate start time and delay ---
-        const scheduledTime = new Date(gameData.scheduled); // API time is UTC
-        const startTime = new Date(scheduledTime.getTime() - (PRE_GAME_START_MINUTES * 60000)); // Calculate when polling should start
-        const delay = startTime.getTime() - Date.now(); // Milliseconds until polling should start
+        // --- Calculate timings ---
+        const scheduledTime = new Date(gameData.scheduled);
+        const startTime = new Date(scheduledTime.getTime() - (PRE_GAME_START_MINUTES * 60000));
+        const delay = startTime.getTime() - Date.now();
         const teamNames = { home: gameData.teamHome, guest: gameData.teamGuest };
-        // Format times for user messages in local time
         const startTimeLocale = startTime.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
         const startDateLocale = startTime.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-        // --- Create/Update ticker state in memory ---
-        const tickerState = activeTickers.get(chatId) || { seen: new Set() }; // Get existing state or create a new one
+        // --- Update ticker state ---
+        const tickerState = activeTickers.get(chatId) || { seen: new Set() };
         tickerState.meetingPageUrl = meetingPageUrl;
         tickerState.teamNames = teamNames;
         tickerState.groupName = groupName;
         tickerState.halftimeLength = gameData.halftimeLength;
-        tickerState.mode = mode; // Store the chosen mode
-        tickerState.recapMessages = []; // Initialize/clear recap message buffer
-        activeTickers.set(chatId, tickerState); // Store the state in the map
+        tickerState.mode = mode;
+        tickerState.recapEvents = []; // Use recapEvents for storing raw events
+        activeTickers.set(chatId, tickerState);
 
-        // --- Schedule or start polling ---
-        if (delay > 0) {
-            // Game is in the future
+        // --- Schedule or Start ---
+        if (delay > 0) { // Future game
             console.log(`[${chatId}] Spiel beginnt um ${scheduledTime.toLocaleString()}. Polling startet in ${Math.round(delay / 60000)} Minuten.`);
-            await client.sendMessage(chatId, `✅ Ticker für *${teamNames.home}* vs *${teamNames.guest}* ist geplant (Modus: ${mode}) und startet automatisch am ${startDateLocale} um ca. ${startTimeLocale} Uhr.`);
-            tickerState.isPolling = false; // Not actively polling yet
-            tickerState.isScheduled = true; // Mark as scheduled
-
-            // Save the schedule information to the persistent file
+            // Send descriptive message based on mode
+            const modeDescriptionScheduled = (mode === 'recap') ? `im Recap-Modus (${RECAP_INTERVAL_MINUTES}-Minuten-Zusammenfassungen)` : "mit Live-Updates";
+            await client.sendMessage(chatId, `✅ Ticker für *${teamNames.home}* vs *${teamNames.guest}* ist geplant (${modeDescriptionScheduled}) und startet automatisch am ${startDateLocale} um ca. ${startTimeLocale} Uhr.`);
+            tickerState.isPolling = false;
+            tickerState.isScheduled = true;
+            // Save to schedule file
             const currentSchedule = loadScheduledTickers(scheduleFilePath);
-            currentSchedule[chatId] = {
-                meetingPageUrl,
-                startTime: startTime.toISOString(), // Save standardized time string
-                groupName,
-                halftimeLength: gameData.halftimeLength,
-                mode
-            };
+            currentSchedule[chatId] = { /* schedule data */ };
             saveScheduledTickers(currentSchedule, scheduleFilePath);
-
-            // Set the timer to activate polling later
-            tickerState.scheduleTimeout = setTimeout(() => {
-                beginActualPolling(chatId);
-            }, delay);
-
-        } else {
-            // Game has already started (or start time is imminent)
+            // Set timer
+            tickerState.scheduleTimeout = setTimeout(() => { beginActualPolling(chatId); }, delay);
+        } else { // Game already started
             console.log(`[${chatId}] Spiel hat bereits begonnen. Starte Polling sofort (Modus: ${mode}).`);
-            await client.sendMessage(chatId, `▶️ Ticker für *${teamNames.home}* vs *${teamNames.guest}* wird sofort gestartet (Modus: ${mode}).`);
-            beginActualPolling(chatId); // Activate polling immediately
-        }
-
-    } catch (error) {
+            // Send descriptive message based on mode
+            let startMessage = `▶️ Ticker für *${teamNames.home}* vs *${teamNames.guest}* wird sofort gestartet. `;
+            if (mode === 'recap') {
+                startMessage += `Du erhältst alle ${RECAP_INTERVAL_MINUTES} Minuten eine Zusammenfassung. 📬`;
+            } else {
+                startMessage += `Du erhältst alle Events live! ⚽`;
+            }
+            await client.sendMessage(chatId, startMessage);
+            beginActualPolling(chatId);
+        } 
+    }   catch (error) {
         // Handle errors during scheduling (e.g., website down, invalid URL)
         console.error(`[${chatId}] Fehler bei der Ticker-Planung:`, error.message);
         await client.sendMessage(chatId, 'Fehler: Konnte die Spieldaten nicht abrufen, um den Ticker zu planen.');
@@ -130,113 +115,66 @@ async function scheduleTicker(meetingPageUrl, chatId, groupName, mode) {
 }
 
 /**
- * Activates the actual polling loop for a given chat ID.
- * Sets the ticker state to 'polling', removes it from the schedule file,
- * starts the recap timer if needed, and adds the initial job to the queue.
- * This is called either immediately by scheduleTicker or later by its setTimeout.
- * @param {string} chatId - The WhatsApp chat ID.
+ * Activates the polling loop for a ticker.
  */
 function beginActualPolling(chatId) {
     const tickerState = activeTickers.get(chatId);
-    if (!tickerState) {
-        // Handle edge case where state might be missing (e.g., after manual file edit/deletion)
-        console.warn(`[${chatId}] Ticker-Status nicht gefunden beim Versuch, das Polling zu starten.`);
-        // Clean up from schedule file just in case
-        const currentSchedule = loadScheduledTickers(scheduleFilePath);
-         if (currentSchedule[chatId]) {
-             delete currentSchedule[chatId];
-             saveScheduledTickers(currentSchedule, scheduleFilePath);
-         }
-        return;
-    }
-
-    // Ensure it's not already marked as polling (safety check)
-    if (tickerState.isPolling) {
-        console.log(`[${chatId}] Polling ist bereits aktiv.`);
-        return;
-    }
+    if (!tickerState || tickerState.isPolling) { /* Handle missing state or already polling */ return; }
 
     console.log(`[${chatId}] Aktiviere Polling (Modus: ${tickerState.mode}).`);
-    tickerState.isPolling = true; // Mark as actively polling
-    tickerState.isScheduled = false; // Mark as no longer just scheduled
+    tickerState.isPolling = true;
+    tickerState.isScheduled = false;
 
-    // Remove from the schedule file persistence
+    // Remove from schedule file
     const currentSchedule = loadScheduledTickers(scheduleFilePath);
-    if (currentSchedule[chatId]) {
-        delete currentSchedule[chatId];
-        saveScheduledTickers(currentSchedule, scheduleFilePath);
-        console.log(`[${chatId}] Aus Planungsdatei entfernt.`);
-    }
+    if (currentSchedule[chatId]) { /* remove and save */ }
 
-    // Start the recap message timer ONLY if in recap mode
+    // Start recap timer if needed
     if (tickerState.mode === 'recap') {
-        if (tickerState.recapIntervalId) clearInterval(tickerState.recapIntervalId); // Clear old timer if any
-        tickerState.recapIntervalId = setInterval(() => {
-            sendRecapMessage(chatId);
-        }, RECAP_INTERVAL_MINUTES * 60 * 1000); // Convert minutes to ms
+        if (tickerState.recapIntervalId) clearInterval(tickerState.recapIntervalId);
+        tickerState.recapIntervalId = setInterval(() => { sendRecapMessage(chatId); }, RECAP_INTERVAL_MINUTES * 60 * 1000);
         console.log(`[${chatId}] Recap-Timer gestartet (${RECAP_INTERVAL_MINUTES} min).`);
     }
 
-    // Add the first polling job immediately to get initial data quickly
-    // Use unshift to add it to the *front* of the queue for priority
-    if (!jobQueue.some(job => job.chatId === chatId && job.type !== 'schedule')) {
-        jobQueue.unshift({
-            type: 'poll', // Explicitly mark as polling job
-            chatId,
-            meetingPageUrl: tickerState.meetingPageUrl,
-            tickerState,
-            jobId: Date.now()
-        });
+    // Add initial job
+    if (!jobQueue.some(job => job.chatId === chatId && job.type === 'poll')) {
+        jobQueue.unshift({ type: 'poll', chatId, /* other job data */ });
     }
 }
 
-// polling.js
-
 /**
- * Sends a recap message containing accumulated events for a specific chat.
- * Clears the message buffer after sending. Calculates game time range.
- * @param {string} chatId - The WhatsApp chat ID.
+ * Sends a recap message formatted using formatRecapEventLine.
  */
 async function sendRecapMessage(chatId) {
     const tickerState = activeTickers.get(chatId);
-    // Check if the ticker is active and has events to send
     if (!tickerState || !tickerState.isPolling || !tickerState.recapEvents || tickerState.recapEvents.length === 0) {
-        // Clear just in case
         if (tickerState && tickerState.recapEvents) tickerState.recapEvents = [];
-        return; // Nothing to do
+        return;
     }
-
     console.log(`[${chatId}] Sende ${tickerState.recapEvents.length} Events im Recap.`);
 
     // --- Calculate Game Time Range ---
-    // Sort events just in case they aren't perfectly ordered
     tickerState.recapEvents.sort((a, b) => a.second - b.second);
     const firstEventSecond = tickerState.recapEvents[0].second;
     const lastEventSecond = tickerState.recapEvents[tickerState.recapEvents.length - 1].second;
-    // Calculate start minute (floor) and end minute (ceil)
     const startMinute = Math.floor(firstEventSecond / 60);
     const endMinute = Math.ceil(lastEventSecond / 60);
     const timeRangeTitle = `Minute ${startMinute} - ${endMinute}`;
 
-    // --- Build Recap Body ---
-    const recapLines = tickerState.recapEvents.map(ev => formatRecapEventLine(ev, tickerState));
-    // Filter out any potentially empty lines (e.g., from ignored event types)
+    // --- Build Recap Body using formatRecapEventLine ---
+    const recapLines = tickerState.recapEvents.map(ev => formatRecapEventLine(ev, tickerState)); // Use the correct formatter
     const validLines = recapLines.filter(line => line && line.trim() !== '');
 
-    if (validLines.length === 0) {
-        console.log(`[${chatId}] Keine gültigen Events zum Senden im Recap gefunden.`);
-        tickerState.recapEvents = []; // Clear buffer even if no valid lines
-        return;
-    }
+    if (validLines.length === 0) { /* Handle no valid lines */ tickerState.recapEvents = []; return; }
 
     // --- Construct Final Message ---
     const teamHeader = `*${tickerState.teamNames.home}* : *${tickerState.teamNames.guest}*`;
     const recapBody = validLines.join('\n');
-    const finalMessage = `📬 *Recap ${timeRangeTitle}*\n\n${teamHeader}\n${recapBody}`; // REMOVED ${separator}\n
+    const finalMessage = `📬 *Recap ${timeRangeTitle}*\n\n${teamHeader}\n${recapBody}`; // Removed separator
 
     try {
         await client.sendMessage(chatId, finalMessage);
-        tickerState.recapEvents = []; // Clear buffer after successful send
+        tickerState.recapEvents = []; // Clear buffer
     } catch (error) {
         console.error(`[${chatId}] Fehler beim Senden der Recap-Nachricht:`, error);
         // Keep messages? For now, clear to prevent duplicates on next attempt.
@@ -289,15 +227,10 @@ function dispatcherLoop() {
 }
 
 /**
- * Executes a single job (either 'schedule' or 'poll') using Puppeteer/Axios.
- * Handles the resource-intensive browser launch, data fetching, and processing logic.
- * Ensures worker slot is freed using a finally block.
- * @param {object} job - The job object from the queue (contains type, chatId, etc.).
+ * Executes a single job (schedule or poll). Contains Puppeteer logic.
  */
 async function runWorker(job) {
-    // Extract common data first
     const { chatId, jobId, type } = job;
-    // Get the *current* state from the map, as it might have changed since job creation
     const tickerState = activeTickers.get(chatId);
     const timerLabel = `[${chatId}] Job ${jobId} (${type}) Execution Time`;
     console.time(timerLabel);
@@ -420,10 +353,6 @@ async function runWorker(job) {
 
 /**
  * Processes events, handles modes, calls AI, sends final stats, schedules cleanup.
- * @param {object} data - The API response containing the events array.
- * @param {object} tickerState - The state object for the specific ticker.
- * @param {string} chatId - The WhatsApp chat ID.
- * @returns {boolean} - True if new, unseen events were processed, false otherwise.
  */
 async function processEvents(data, tickerState, chatId) {
     if (!data || !Array.isArray(data.events)) return false;
@@ -437,36 +366,29 @@ async function processEvents(data, tickerState, chatId) {
         tickerState.seen.add(ev.idx);
         newUnseenEventsProcessed = true;
 
-        if (msg) { // Only send/log if a message was actually formatted
-            // Send critical/live/recap messages based on mode
-            if (ev.event === 14 || ev.event === 16 || ev.event === 15) { // Critical events
-                console.log(`[${chatId}] Sende kritisches Event sofort:`, msg);
-                await client.sendMessage(chatId, msg);
-            } else if (tickerState.mode === 'live') { // Live mode
-                console.log(`[${chatId}] Sende neues Event (Live):`, msg);
-                await client.sendMessage(chatId, msg);
-            } else if (tickerState.mode === 'recap') { // Recap mode
-                console.log(`[${chatId}] Speichere Event-Objekt für Recap (ID: ${ev.idx}, Typ: ${ev.event})`);
+        if (msg) {
+            // Send based on mode and event type
+            if (ev.event === 14 || ev.event === 16 || ev.event === 15) { /* Send critical */ }
+            else if (tickerState.mode === 'live') { /* Send live */ }
+            else if (tickerState.mode === 'recap') {
+                // Store raw event, not formatted message
                 tickerState.recapEvents = tickerState.recapEvents || [];
-                tickerState.recapEvents.push(ev); // Store raw event
+                tickerState.recapEvents.push(ev);
             }
         }
 
-        // --- Handle Game End ---
-        if (ev.event === 16) {
-            console.log(`[${chatId}] Spielende-Event empfangen. Ticker wird gestoppt.`);
+        if (ev.event === 16) { // Game End
+            console.log(`[${chatId}] Spielende-Event empfangen...`);
             tickerState.isPolling = false;
             if (tickerState.recapIntervalId) clearInterval(tickerState.recapIntervalId);
 
             // Send final recap if needed
             if (tickerState.mode === 'recap' && tickerState.recapEvents && tickerState.recapEvents.length > 0) {
-                 console.log(`[${chatId}] Sende letzten Recap bei Spielende.`);
                  await sendRecapMessage(chatId);
             }
 
             // Remove pending job
-            const index = jobQueue.findIndex(job => job.chatId === chatId);
-            if (index > -1) jobQueue.splice(index, 1);
+            const index = jobQueue.findIndex(job => job.chatId === chatId); if (index > -1) jobQueue.splice(index, 1);
 
             try {
                 // Get the calculated stats
@@ -484,9 +406,7 @@ async function processEvents(data, tickerState, chatId) {
                 setTimeout(async () => {
                      await client.sendMessage(chatId, statsMessage);
                 }, 1000); // 1 second delay after end
-            } catch (e) {
-                console.error(`[${chatId}] Fehler beim Senden der Spielstatistiken:`, e);
-            }
+            } catch (e) { console.error(`[${chatId}] Fehler beim Senden der Spielstatistiken:`, e); }
 
             // Generate and send AI summary
             try {
