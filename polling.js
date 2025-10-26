@@ -288,8 +288,7 @@ async function runWorker(job) {
             if (delay > 0) { // Still in future
                 console.log(`[${chatId}] Planungs-Job erfolgreich...`);
                 const modeDescriptionScheduled = (tickerState.mode === 'recap') ? `im Recap-Modus (${RECAP_INTERVAL_MINUTES}-Minuten-Zusammenfassungen)` : "mit Live-Updates";
-                await client.sendMessage(chatId, `✅ Ticker für *${teamNames.home}* vs *${teamNames.guest}* ist geplant (${modeDescriptionScheduled})...`);
-                tickerState.isPolling = false; tickerState.isScheduled = true;
+await client.sendMessage(chatId, `✅ Ticker für *${teamNames.home}* vs *${teamNames.guest}* ist geplant (${modeDescriptionScheduled}) und startet automatisch am ${startDateLocale} um ca. ${startTimeLocale} Uhr.`);                tickerState.isPolling = false; tickerState.isScheduled = true;
                 const currentSchedule = loadScheduledTickers(scheduleFilePath);
                 // ** Save schedule data **
                 currentSchedule[chatId] = {
@@ -397,8 +396,15 @@ async function processEvents(data, tickerState, chatId) {
             // --- Send Final Stats ---
             try {
                 const gameStats = extractGameStats(events, tickerState.teamNames);
-                const statsMessage = `📊 *Statistiken zum Spiel:*\n...\n*Zeitstrafen (${tickerState.teamNames.guest}):* ${gameStats.guestPenalties}`;
-                setTimeout(async () => {
+                const statsMessage = `📊 *Statistiken zum Spiel:*\n` +
+                     `-----------------------------------\n` +
+                     `*Topscorer (${tickerState.teamNames.home}):* ${gameStats.homeTopScorer}\n` +
+                     `*Topscorer (${tickerState.teamNames.guest}):* ${gameStats.guestTopScorer}\n` +
+                     `*7-Meter (${tickerState.teamNames.home}):* ${gameStats.homeSevenMeters}\n` +
+                     `*7-Meter (${tickerState.teamNames.guest}):* ${gameStats.guestSevenMeters}\n` +
+                     `*Zeitstrafen (${tickerState.teamNames.home}):* ${gameStats.homePenalties}\n` +
+                     `*Zeitstrafen (${tickerState.teamNames.guest}):* ${gameStats.guestPenalties}`;                
+                     setTimeout(async () => {
                      try { await client.sendMessage(chatId, statsMessage); }
                      catch(e) { console.error(`[${chatId}] Fehler beim Senden der Spielstatistiken:`, e); }
                 }, 1000);
@@ -417,8 +423,8 @@ async function processEvents(data, tickerState, chatId) {
 
             // --- Send Final Bot Message ---
             setTimeout(async () => {
-                const finalMessage = "Vielen Dank fürs Mitfiebern! ..."; // Your message
-                try { await client.sendMessage(chatId, finalMessage); }
+            const finalMessage = "Vielen Dank fürs Mitfiebern! 🥳\n\nDen Quellcode für diesen Bot könnt ihr hier einsehen:\nhttps://github.com/nambatu/whatsapp-liveticker-bot/";                
+            try { await client.sendMessage(chatId, finalMessage); }
                 catch (e) { console.error(`[${chatId}] Fehler beim Senden der Abschlussnachricht: `, e); }
             }, 4000); // Delay final message after AI summary
 
