@@ -95,9 +95,11 @@ function saveScheduledTickers(scheduledTickers, scheduleFilePath) {
  * @returns {string} - The abbreviated name, or just the last name, or an empty string.
  */
 function abbreviatePlayerName(firstName, lastName) {
-    if (!lastName) return ''; // No last name provided
-    if (!firstName) return lastName; // No first name provided
-    return `${firstName.charAt(0)}. ${lastName}`; // Combine first initial and last name
+    // ** FIX: Check for "Anonym" **
+    if (!lastName || lastName.toLowerCase() === 'anonym') return ''; // Return empty if last name is missing or "Anonym"
+    if (!firstName || firstName.toLowerCase() === 'anonym') return lastName; // Return just last name if first name is "Anonym"
+    
+    return `${firstName.charAt(0)}. ${lastName}`; // Return "F. Lastname"
 }
 
 /**
@@ -123,16 +125,14 @@ function formatTimeFromSeconds(sec) {
 function formatEvent(ev, tickerState) {
     // Get basic event info (emoji, label) from config, provide fallback for unknown types
     const eventInfo = EVENT_MAP[ev.event] || { label: `Unbekanntes Event ${ev.event}`, emoji: "📢" };
-    // Get full team names from state, provide default fallbacks
     const homeTeamName = tickerState.teamNames ? tickerState.teamNames.home : 'Heim';
     const guestTeamName = tickerState.teamNames ? tickerState.teamNames.guest : 'Gast';
     // Determine the acting team for this specific event
     const team = ev.teamHome ? homeTeamName : guestTeamName;
     // Format the game time if available
     const time = ev.second ? ` (${formatTimeFromSeconds(ev.second)})` : '';
-    // Get the abbreviated player name
+    // ** FIX: Check for "Anonym" names **
     const abbreviatedPlayer = abbreviatePlayerName(ev.personFirstname, ev.personLastname);
-    // Prepare player string snippet specifically for goal messages
     const playerForGoal = abbreviatedPlayer ? ` durch ${abbreviatedPlayer}` : '';
 
     // Main logic: Format message differently based on the event type
@@ -171,12 +171,11 @@ function formatEvent(ev, tickerState) {
         case 8: // Zeitstrafe
         case 9: // Gelbe Karte
         case 11: // Rote Karte
-             // No score update. Format based on whether player name is known.
+             // ** FIX: Logic updated to handle empty abbreviatedPlayer **
             if (abbreviatedPlayer) {
-                // "Action for Player (Team) (Time)"
                 return `${eventInfo.emoji} ${eventInfo.label} für ${abbreviatedPlayer} (*${team}*)${time}`;
             } else {
-                // "Action for Team (Time)" (e.g., bench penalty)
+                // If player is "Anonym", this will now correctly show just the team
                 return `${eventInfo.emoji} ${eventInfo.label} für *${team}*${time}`;
             }
 
@@ -206,73 +205,6 @@ function formatEvent(ev, tickerState) {
 }
 
 /**
- * Formats a single event into a line for the recap message using bullet points and separators.
- * @param {object} ev - The raw event object.
- * @param {object} tickerState - The state object for the ticker.
- * @returns {string} - The formatted recap line string.
- */
-function formatEvent(ev, tickerState) {
-    const eventInfo = EVENT_MAP[ev.event] || { label: `Unbekanntes Event ${ev.event}`, emoji: "📢" };
-    const homeTeamName = tickerState.teamNames ? tickerState.teamNames.home : 'Heim';
-    const guestTeamName = tickerState.teamNames ? tickerState.teamNames.guest : 'Gast';
-    const team = ev.teamHome ? homeTeamName : guestTeamName;
-    const time = ev.second ? ` (${formatTimeFromSeconds(ev.second)})` : '';
-    const abbreviatedPlayer = abbreviatePlayerName(ev.personFirstname, ev.personLastname);
-    const playerForGoal = abbreviatedPlayer ? ` durch ${abbreviatedPlayer}` : '';
-
-    switch (ev.event) {
-        case 4: { // Tor
-            let scoreLine;
-            if (ev.teamHome) {
-                scoreLine = `${homeTeamName}  *${ev.pointsHome}*:${ev.pointsGuest}  ${guestTeamName}`;
-            } else {
-                scoreLine = `${homeTeamName}  ${ev.pointsHome}:*${ev.pointsGuest}* ${guestTeamName}`;
-            }
-            return `${scoreLine}\n${eventInfo.emoji} Tor${playerForGoal}${time}`;
-        }
-        case 5: { // 7-Meter Tor
-            let scoreLine;
-            if (ev.teamHome) {
-                scoreLine = `${homeTeamName}  *${ev.pointsHome}*:${ev.pointsGuest}  ${guestTeamName}`;
-            } else {
-                scoreLine = `${homeTeamName}  ${ev.pointsHome}:*${ev.pointsGuest}* ${guestTeamName}`;
-            }
-            return `${scoreLine}\n${eventInfo.emoji} 7-Meter Tor${playerForGoal}${time}`;
-        }
-        case 6: // 7-Meter Fehlwurf
-             return `${eventInfo.emoji} 7-Meter Fehlwurf für *${team}*${playerForGoal}${time}`;
-        case 2: // Timeout Heim
-        case 3: // Timeout Gast
-            return `${eventInfo.emoji} Timeout für *${team}*`;
-        case 8: // Zeitstrafe
-        case 9: // Gelbe Karte
-        case 11: // Rote Karte
-            if (abbreviatedPlayer) {
-                return `${eventInfo.emoji} ${eventInfo.label} für ${abbreviatedPlayer} (*${team}*)${time}`;
-            } else {
-                return `${eventInfo.emoji} ${eventInfo.label} für *${team}*${time}`;
-            }
-        
-        // --- CHANGE HERE: Do NOT return "" for critical events ---
-        case 14: // Halbzeit
-            return `⏸️ *Halbzeit*\n${homeTeamName}  *${ev.pointsHome}:${ev.pointsGuest}* ${guestTeamName}`;
-        case 16: // Spielende
-            return `🏁 *Spielende*\n${homeTeamName}  *${ev.pointsHome}:${ev.pointsGuest}* ${guestTeamName}`;
-        case 15: // Spielbeginn
-             return `▶️ *Das Spiel hat begonnen!*`;
-        
-        // Events to ignore (return empty string so no message is sent)
-        case 0: // Spiel geht weiter
-        case 1: // Spiel unterbrochen
-        case 17: // Teamaufstellung
-            return ``;
-        
-        default:
-            return `${eventInfo.emoji} ${eventInfo.label}`;
-    }
-}
-
-/**
  * Formats a single event into a line for the recap message (Emoji-only version).
  * @param {object} ev - The raw event object.
  * @param {object} tickerState - The state object for the ticker.
@@ -284,6 +216,7 @@ function formatRecapEventLine(ev, tickerState) {
     const guestTeamName = tickerState.teamNames ? tickerState.teamNames.guest : 'Gast';
     const team = ev.teamHome ? homeTeamName : guestTeamName;
     const time = ev.second ? formatTimeFromSeconds(ev.second) : '--:--';
+    // ** FIX: Check for "Anonym" names **
     const abbreviatedPlayer = abbreviatePlayerName(ev.personFirstname, ev.personLastname);
 
     let scoreStr = `${ev.pointsHome}:${ev.pointsGuest}`; // Score is always shown
@@ -306,6 +239,7 @@ function formatRecapEventLine(ev, tickerState) {
         case 8: // Zeitstrafe
         case 9: // Gelbe Karte
         case 11: // Rote Karte
+            // ** FIX: Logic updated to handle empty abbreviatedPlayer **
             detailStr = abbreviatedPlayer ? `${abbreviatedPlayer} (*${team}*)` : `*${team}*`;
             break;
         case 15: // Spielbeginn
